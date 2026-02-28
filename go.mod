@@ -5,6 +5,7 @@ go 1.25.6
 require (
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
+	golang.org/x/sync v0.16.0
 	golang.org/x/sys v0.29.0
 )
 
