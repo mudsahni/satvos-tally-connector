@@ -1,0 +1,16 @@
+satvos:
+  base_url: "https://api.satvos.com"
+  api_key: "sk_your_api_key_here"
+
+tally:
+  host: "localhost"
+  port: 0          # 0 = auto-discover
+  company: ""      # empty = auto-detect
+
+sync:
+  interval_seconds: 30
+  batch_size: 50
+  retry_attempts: 3
+
+ui:
+  port: 8321
