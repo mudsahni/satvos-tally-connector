@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SATVOS Tally Connector</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; }
+        header { background: #1a1a2e; color: #fff; padding: 20px 32px; }
+        header h1 { font-size: 20px; font-weight: 600; }
+        header p { font-size: 13px; color: #aaa; margin-top: 4px; }
+        .container { max-width: 720px; margin: 32px auto; padding: 0 16px; }
+        .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 24px; margin-bottom: 20px; }
+        .card h2 { font-size: 15px; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px; }
+        .status-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
+        .status-row:last-child { border-bottom: none; }
+        .status-label { font-size: 14px; color: #666; }
+        .status-value { font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        .dot.green { background: #22c55e; }
+        .dot.red { background: #ef4444; }
+        .dot.gray { background: #ccc; }
+        .error-banner { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin-bottom: 20px; color: #991b1b; font-size: 14px; display: none; }
+        .actions { text-align: center; }
+        .btn { background: #1a1a2e; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-size: 14px; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #2a2a4e; }
+        .btn:disabled { background: #999; cursor: not-allowed; }
+        #sync-feedback { font-size: 13px; color: #22c55e; margin-top: 8px; min-height: 20px; }
+        a.nav-link { color: #aaa; font-size: 13px; text-decoration: none; margin-left: 16px; }
+        a.nav-link:hover { color: #fff; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-row">
+            <div>
+                <h1>SATVOS Tally Connector</h1>
+                <p>Local sync agent status dashboard</p>
+            </div>
+            <a href="/setup.html" class="nav-link">Setup</a>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="error-banner" id="error-banner"></div>
+
+        <div class="card">
+            <h2>Connection Status</h2>
+            <div class="status-row">
+                <span class="status-label">SATVOS Cloud</span>
+                <span class="status-value" id="cloud-status">
+                    <span class="dot gray" id="cloud-dot"></span>
+                    <span id="cloud-text">Checking...</span>
+                </span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Tally Prime</span>
+                <span class="status-value" id="tally-status">
+                    <span class="dot gray" id="tally-dot"></span>
+                    <span id="tally-text">Checking...</span>
+                </span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Details</h2>
+            <div class="status-row">
+                <span class="status-label">Company</span>
+                <span class="status-value" id="company">--</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Tally Port</span>
+                <span class="status-value" id="tally-port">--</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Agent ID</span>
+                <span class="status-value" id="agent-id">--</span>
+            </div>
+        </div>
+
+        <div class="card actions">
+            <button class="btn" id="sync-btn" onclick="triggerSync()">Sync Now</button>
+            <div id="sync-feedback"></div>
+        </div>
+    </div>
+
+    <script>
+        function setDot(dotEl, color) {
+            dotEl.className = "dot " + color;
+        }
+
+        function updateStatus() {
+            fetch("/api/status")
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    setDot(document.getElementById("cloud-dot"), "green");
+                    document.getElementById("cloud-text").textContent = "Connected";
+
+                    if (data.tally_connected) {
+                        setDot(document.getElementById("tally-dot"), "green");
+                        document.getElementById("tally-text").textContent = "Connected";
+                    } else {
+                        setDot(document.getElementById("tally-dot"), "red");
+                        document.getElementById("tally-text").textContent = "Disconnected";
+                    }
+
+                    document.getElementById("company").textContent = data.tally_company || "--";
+                    document.getElementById("tally-port").textContent = data.tally_port || "--";
+                    document.getElementById("agent-id").textContent = data.agent_id || "--";
+
+                    var banner = document.getElementById("error-banner");
+                    if (data.last_sync_error) {
+                        banner.textContent = "Last sync error: " + data.last_sync_error;
+                        banner.style.display = "block";
+                    } else {
+                        banner.style.display = "none";
+                    }
+                })
+                .catch(function() {
+                    setDot(document.getElementById("cloud-dot"), "red");
+                    document.getElementById("cloud-text").textContent = "Unreachable";
+                });
+        }
+
+        function triggerSync() {
+            var btn = document.getElementById("sync-btn");
+            var fb = document.getElementById("sync-feedback");
+            btn.disabled = true;
+            fb.textContent = "";
+
+            fetch("/api/sync", { method: "POST" })
+                .then(function(r) { return r.json(); })
+                .then(function() {
+                    fb.textContent = "Sync triggered successfully";
+                    fb.style.color = "#22c55e";
+                    setTimeout(function() { fb.textContent = ""; }, 3000);
+                })
+                .catch(function() {
+                    fb.textContent = "Failed to trigger sync";
+                    fb.style.color = "#ef4444";
+                    setTimeout(function() { fb.textContent = ""; fb.style.color = "#22c55e"; }, 3000);
+                })
+                .finally(function() {
+                    btn.disabled = false;
+                });
+        }
+
+        updateStatus();
+        setInterval(updateStatus, 5000);
+    </script>
+</body>
+</html>
