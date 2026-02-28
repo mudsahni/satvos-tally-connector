@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -105,7 +106,7 @@ func (c *Client) PushMasters(ctx context.Context, payload MasterPayload) error {
 
 // PullOutbound fetches outbound items (documents to push to Tally) from the SATVOS server.
 func (c *Client) PullOutbound(ctx context.Context, cursor string, limit int) (*OutboundResponse, error) {
-	path := fmt.Sprintf("/api/v1/sync/v1/outbound?cursor=%s&limit=%d", cursor, limit)
+	path := fmt.Sprintf("/api/v1/sync/v1/outbound?cursor=%s&limit=%d", url.QueryEscape(cursor), limit)
 	var resp OutboundResponse
 	if err := c.do(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err

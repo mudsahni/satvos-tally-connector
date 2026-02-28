@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -53,6 +55,12 @@ func Load() (*Config, error) {
 	// Config file search paths
 	v.SetConfigName("connector")
 	v.SetConfigType("yaml")
+	if appData := os.Getenv("APPDATA"); appData != "" {
+		v.AddConfigPath(filepath.Join(appData, "satvos-connector"))
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		v.AddConfigPath(filepath.Join(home, ".satvos-connector"))
+	}
 	v.AddConfigPath(".")
 	v.AddConfigPath("./configs")
 

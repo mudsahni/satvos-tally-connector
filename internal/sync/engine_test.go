@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -239,26 +240,26 @@ func TestEngine_RunCycle_FullCycle(t *testing.T) {
 
 		// Route based on request content.
 		switch {
-		case contains(bodyStr, "$$CurrentCompany"):
+		case strings.Contains(bodyStr, "$$CurrentCompany"):
 			companyInfoCalls.Add(1)
 			w.Write([]byte(tallyCompanyXML("Test Corp")))
 
-		case contains(bodyStr, "LedgerList"):
+		case strings.Contains(bodyStr, "LedgerList"):
 			w.Write([]byte(tallyMasterXML("Ledger")))
 
-		case contains(bodyStr, "StockItemList"):
+		case strings.Contains(bodyStr, "StockItemList"):
 			w.Write([]byte(tallyMasterXML("StockItem")))
 
-		case contains(bodyStr, "GodownList"):
+		case strings.Contains(bodyStr, "GodownList"):
 			w.Write([]byte(tallyMasterXML("Godown")))
 
-		case contains(bodyStr, "UnitList"):
+		case strings.Contains(bodyStr, "UnitList"):
 			w.Write([]byte(tallyMasterXML("Unit")))
 
-		case contains(bodyStr, "CostCentreList"):
+		case strings.Contains(bodyStr, "CostCentreList"):
 			w.Write([]byte(tallyMasterXML("CostCentre")))
 
-		case contains(bodyStr, "<TALLYREQUEST>Import</TALLYREQUEST>"):
+		case strings.Contains(bodyStr, "<TALLYREQUEST>Import</TALLYREQUEST>"):
 			w.Write([]byte(tallyImportSuccessXML()))
 
 		default:
@@ -357,14 +358,14 @@ func TestEngine_RunCycle_OutboundImportError(t *testing.T) {
 		w.Header().Set("Content-Type", "text/xml; charset=utf-8")
 
 		switch {
-		case contains(bodyStr, "$$CurrentCompany"):
+		case strings.Contains(bodyStr, "$$CurrentCompany"):
 			w.Write([]byte(tallyCompanyXML("Test Corp")))
 
-		case contains(bodyStr, "List"):
+		case strings.Contains(bodyStr, "List"):
 			// Master requests — return empty collections.
 			w.Write([]byte(`<ENVELOPE><BODY><DATA><COLLECTION></COLLECTION></DATA></BODY></ENVELOPE>`))
 
-		case contains(bodyStr, "<TALLYREQUEST>Import</TALLYREQUEST>"):
+		case strings.Contains(bodyStr, "<TALLYREQUEST>Import</TALLYREQUEST>"):
 			w.Write([]byte(tallyImportErrorXML("Ledger not found")))
 
 		default:
@@ -466,12 +467,3 @@ func TestEngine_GetStatus(t *testing.T) {
 	assert.Equal(t, "agent-xyz", status.AgentID)
 }
 
-// contains checks if s contains substr.
-func contains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}

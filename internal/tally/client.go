@@ -53,6 +53,9 @@ func (c *Client) SendRequest(ctx context.Context, xmlBody []byte) ([]byte, error
 	if err != nil {
 		return nil, fmt.Errorf("reading tally response: %w", err)
 	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("tally returned HTTP %d: %s", resp.StatusCode, string(body))
+	}
 	return body, nil
 }
 

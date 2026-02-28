@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 )
@@ -20,7 +21,7 @@ func (s *Server) handleTriggerSync(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	go s.engine.TriggerSync(r.Context())
+	go s.engine.TriggerSync(context.Background())
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "sync triggered"})
 }

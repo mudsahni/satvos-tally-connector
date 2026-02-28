@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -384,13 +385,13 @@ func TestParseCompanyInfoResponse_InvalidXML(t *testing.T) {
 func TestBuildMasterExportRequest_ContainsMasterType(t *testing.T) {
 	req := BuildMasterExportRequest("Ledger")
 	reqStr := string(req)
-	if !containsSubstring(reqStr, "<ID>LedgerList</ID>") {
+	if !strings.Contains(reqStr, "<ID>LedgerList</ID>") {
 		t.Error("expected request to contain <ID>LedgerList</ID>")
 	}
-	if !containsSubstring(reqStr, `<TYPE>Ledger</TYPE>`) {
+	if !strings.Contains(reqStr, `<TYPE>Ledger</TYPE>`) {
 		t.Error("expected request to contain <TYPE>Ledger</TYPE>")
 	}
-	if !containsSubstring(reqStr, `NAME="LedgerList"`) {
+	if !strings.Contains(reqStr, `NAME="LedgerList"`) {
 		t.Error("expected request to contain NAME=\"LedgerList\"")
 	}
 }
@@ -399,10 +400,10 @@ func TestBuildVoucherImportRequest_ContainsVoucherXML(t *testing.T) {
 	voucherXML := `<VOUCHER VCHTYPE="Purchase"><DATE>20240115</DATE></VOUCHER>`
 	req := BuildVoucherImportRequest(voucherXML)
 	reqStr := string(req)
-	if !containsSubstring(reqStr, voucherXML) {
+	if !strings.Contains(reqStr, voucherXML) {
 		t.Error("expected import request to contain the voucher XML")
 	}
-	if !containsSubstring(reqStr, "<TALLYREQUEST>Import</TALLYREQUEST>") {
+	if !strings.Contains(reqStr, "<TALLYREQUEST>Import</TALLYREQUEST>") {
 		t.Error("expected import request header")
 	}
 }
@@ -428,16 +429,3 @@ func TestParseImportResponse_EmptyResponse(t *testing.T) {
 	}
 }
 
-// containsSubstring checks if s contains substr.
-func containsSubstring(s, substr string) bool {
-	return len(s) >= len(substr) && searchSubstring(s, substr)
-}
-
-func searchSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/mudsahni/satvos-tally-connector/internal/cloud"
@@ -24,6 +25,7 @@ type Engine struct {
 	store       *store.LocalStore
 	version     string
 	stopCh      chan struct{}
+	stopOnce    sync.Once
 }
 
 // NewEngine creates a new sync engine.
@@ -58,9 +60,9 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 }
 
-// Stop signals the engine to shut down.
+// Stop signals the engine to shut down. It is safe to call multiple times.
 func (e *Engine) Stop() {
-	close(e.stopCh)
+	e.stopOnce.Do(func() { close(e.stopCh) })
 }
 
 // TriggerSync runs a single sync cycle immediately (used by the UI).

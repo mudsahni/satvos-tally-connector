@@ -10,15 +10,10 @@ var voucherTemplate = template.Must(template.New("voucher").Funcs(template.FuncM
 	"neg":       func(f float64) float64 { return -f },
 }).Parse(voucherXMLTemplate))
 
+var xmlReplacer = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "\"", "&quot;", "'", "&apos;")
+
 func xmlEscape(s string) string {
-	r := strings.NewReplacer(
-		"&", "&amp;",
-		"<", "&lt;",
-		">", "&gt;",
-		"\"", "&quot;",
-		"'", "&apos;",
-	)
-	return r.Replace(s)
+	return xmlReplacer.Replace(s)
 }
 
 const voucherXMLTemplate = `<VOUCHER REMOTEID="{{.RemoteID | xmlEscape}}" VCHTYPE="{{.VoucherType | xmlEscape}}" ACTION="Create">

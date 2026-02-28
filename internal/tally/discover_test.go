@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -164,7 +165,7 @@ func TestDiscover_UsesDefaultPortRange(t *testing.T) {
 	}
 	// Verify the error message mentions the default port range.
 	errMsg := err.Error()
-	if !containsSubstring(errMsg, "9000") || !containsSubstring(errMsg, "9010") {
+	if !strings.Contains(errMsg, "9000") || !strings.Contains(errMsg, "9010") {
 		t.Errorf("expected error to mention ports 9000-9010, got: %s", errMsg)
 	}
 }

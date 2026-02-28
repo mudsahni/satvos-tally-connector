@@ -15,6 +15,7 @@ import (
 	"github.com/mudsahni/satvos-tally-connector/internal/cloud"
 	"github.com/mudsahni/satvos-tally-connector/internal/config"
 	"github.com/mudsahni/satvos-tally-connector/internal/store"
+	"github.com/mudsahni/satvos-tally-connector/internal/svc"
 	"github.com/mudsahni/satvos-tally-connector/internal/sync"
 	"github.com/mudsahni/satvos-tally-connector/internal/tally"
 	"github.com/mudsahni/satvos-tally-connector/internal/ui"
@@ -23,6 +24,14 @@ import (
 const version = "0.1.0"
 
 func main() {
+	if svc.IsWindowsService() {
+		if err := svc.Run(func(ctx context.Context) error {
+			return run()
+		}); err != nil {
+			log.Fatalf("service failed: %v", err)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
