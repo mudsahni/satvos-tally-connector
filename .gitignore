@@ -2,3 +2,4 @@ bin/
 *.exe
 configs/connector.yaml
 .env
+connector
