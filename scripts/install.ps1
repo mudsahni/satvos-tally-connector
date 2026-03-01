@@ -58,3 +58,4 @@ Write-Host ""
 Write-Host "Installation complete!" -ForegroundColor Green
 Write-Host "Dashboard: http://localhost:8321"
 Write-Host "Config: $ConfigDir\connector.yaml"
+
