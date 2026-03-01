@@ -131,7 +131,7 @@ func TestDiscoverWithPorts_RespectsContext(t *testing.T) {
 	// should cause the function to return promptly rather than hanging.
 	_, err := DiscoverWithPorts(ctx, "127.0.0.1", 19900, 19910)
 	if err == nil {
-		t.Fatal("expected error when context is cancelled/timed out, got nil")
+		t.Fatal("expected error when context is canceled/timed out, got nil")
 	}
 }
 

@@ -13,7 +13,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	status := s.engine.GetStatus()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(status)
+	_ = json.NewEncoder(w).Encode(status)
 }
 
 func (s *Server) handleTriggerSync(w http.ResponseWriter, r *http.Request) {
@@ -23,5 +23,5 @@ func (s *Server) handleTriggerSync(w http.ResponseWriter, r *http.Request) {
 	}
 	go s.engine.TriggerSync(context.Background())
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "sync triggered"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "sync triggered"})
 }

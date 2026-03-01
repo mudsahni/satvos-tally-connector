@@ -51,7 +51,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, result inter
 	if err != nil {
 		return fmt.Errorf("sending request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -100,7 +100,7 @@ func (c *Client) Heartbeat(ctx context.Context, req HeartbeatRequest) error {
 }
 
 // PushMasters uploads master data (ledgers, stock items, etc.) to the SATVOS server.
-func (c *Client) PushMasters(ctx context.Context, payload MasterPayload) error {
+func (c *Client) PushMasters(ctx context.Context, payload *MasterPayload) error {
 	return c.do(ctx, http.MethodPost, "/api/v1/sync/v1/masters", payload, nil)
 }
 

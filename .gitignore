@@ -1,5 +1,26 @@
+# Binaries
 bin/
 *.exe
+connector
+
+# Config (contains API keys)
 configs/connector.yaml
 .env
-connector
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+coverage.out
+*.test
+
+# State file (contains agent secrets)
+state.json

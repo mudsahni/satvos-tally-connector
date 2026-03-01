@@ -47,7 +47,7 @@ func (c *Client) SendRequest(ctx context.Context, xmlBody []byte) ([]byte, error
 	if err != nil {
 		return nil, fmt.Errorf("sending request to tally: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

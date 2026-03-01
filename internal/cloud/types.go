@@ -41,7 +41,7 @@ type MasterPayload struct {
 	StockItems  []MasterStockItem  `json:"stock_items,omitempty"`
 	Godowns     []MasterGodown     `json:"godowns,omitempty"`
 	Units       []MasterUnit       `json:"units,omitempty"`
-	CostCentres []MasterCostCentre `json:"cost_centres,omitempty"`
+	CostCentres []MasterCostCentre `json:"cost_centres,omitempty"` //nolint:misspell // Tally uses British spelling
 }
 
 type MasterLedger struct {

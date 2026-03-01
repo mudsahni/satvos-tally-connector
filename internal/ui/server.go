@@ -27,7 +27,7 @@ func NewServer(port int, engine *sync.Engine) *Server {
 	return &Server{port: port, engine: engine}
 }
 
-// Start begins serving the web UI. It blocks until the context is cancelled
+// Start begins serving the web UI. It blocks until the context is canceled
 // or the server encounters a fatal error.
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()

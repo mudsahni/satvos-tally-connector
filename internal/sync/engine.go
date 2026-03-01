@@ -41,7 +41,7 @@ func NewEngine(cfg *config.Config, cloudClient *cloud.Client, tallyClient *tally
 }
 
 // Start runs the sync loop. It executes one cycle immediately, then repeats
-// on each tick until the context is cancelled or Stop is called.
+// on each tick until the context is canceled or Stop is called.
 func (e *Engine) Start(ctx context.Context) error {
 	ticker := time.NewTicker(time.Duration(e.cfg.Sync.IntervalSeconds) * time.Second)
 	defer ticker.Stop()
@@ -168,15 +168,15 @@ func (e *Engine) pushMasters(ctx context.Context) {
 		log.Printf("[sync] failed to get units: %v", err)
 	}
 
-	if centres, err := e.tallyClient.GetCostCentres(ctx); err == nil {
-		for _, c := range centres {
+	if centers, err := e.tallyClient.GetCostCentres(ctx); err == nil { //nolint:misspell // Tally uses British spelling
+		for _, c := range centers {
 			payload.CostCentres = append(payload.CostCentres, cloud.MasterCostCentre{Name: c.Name, Parent: c.Parent})
 		}
 	} else {
-		log.Printf("[sync] failed to get cost centres: %v", err)
+		log.Printf("[sync] failed to get cost centers: %v", err)
 	}
 
-	if err := e.cloudClient.PushMasters(ctx, payload); err != nil {
+	if err := e.cloudClient.PushMasters(ctx, &payload); err != nil {
 		log.Printf("[sync] failed to push masters: %v", err)
 	}
 }

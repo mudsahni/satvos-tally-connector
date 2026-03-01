@@ -18,7 +18,7 @@ func clearConnectorEnv(t *testing.T) {
 		if len(kv) > 10 && kv[:10] == "CONNECTOR_" {
 			key := kv[:indexOf(kv, '=')]
 			t.Setenv(key, "")
-			os.Unsetenv(key)
+			_ = os.Unsetenv(key)
 		}
 	}
 }
@@ -148,7 +148,7 @@ sync:
 ui:
   port: 4000
 `
-	err := os.WriteFile(filepath.Join(tmpDir, "connector.yaml"), []byte(configContent), 0644)
+	err := os.WriteFile(filepath.Join(tmpDir, "connector.yaml"), []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	// Change to the temp directory so viper finds the config file in ".".

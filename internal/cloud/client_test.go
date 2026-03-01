@@ -40,7 +40,7 @@ func TestClient_Register_Success(t *testing.T) {
 				Status:   "active",
 			}),
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -88,7 +88,7 @@ func TestClient_Heartbeat_Success(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(APIResponse{Success: true})
+		_ = json.NewEncoder(w).Encode(APIResponse{Success: true})
 	}))
 	defer server.Close()
 
@@ -138,12 +138,12 @@ func TestClient_PushMasters_Success(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(APIResponse{Success: true})
+		_ = json.NewEncoder(w).Encode(APIResponse{Success: true})
 	}))
 	defer server.Close()
 
 	client := NewClient(server.URL, "sk_testkey123")
-	err := client.PushMasters(context.Background(), MasterPayload{
+	err := client.PushMasters(context.Background(), &MasterPayload{
 		Ledgers: []MasterLedger{
 			{
 				Name:        "Purchase Account",
@@ -211,7 +211,7 @@ func TestClient_PullOutbound_Success(t *testing.T) {
 				NextCursor: "def456",
 			}),
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -268,7 +268,7 @@ func TestClient_Ack_Success(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(APIResponse{Success: true})
+		_ = json.NewEncoder(w).Encode(APIResponse{Success: true})
 	}))
 	defer server.Close()
 
@@ -327,7 +327,7 @@ func TestClient_PushInbound_Success(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(APIResponse{Success: true})
+		_ = json.NewEncoder(w).Encode(APIResponse{Success: true})
 	}))
 	defer server.Close()
 
@@ -367,7 +367,7 @@ func TestClient_AuthHeader(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(APIResponse{Success: true})
+		_ = json.NewEncoder(w).Encode(APIResponse{Success: true})
 	}))
 	defer server.Close()
 
@@ -384,7 +384,7 @@ func TestClient_AuthHeader(t *testing.T) {
 func TestClient_ServerError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("internal server error"))
+		_, _ = w.Write([]byte("internal server error"))
 	}))
 	defer server.Close()
 
@@ -404,7 +404,7 @@ func TestClient_ServerError(t *testing.T) {
 func TestClient_APIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(APIResponse{
+		_ = json.NewEncoder(w).Encode(APIResponse{
 			Success: false,
 			Error: &APIError{
 				Code:    "INVALID_REQUEST",

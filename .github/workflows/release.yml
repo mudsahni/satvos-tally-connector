@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Run tests
+        run: go test ./... -v -count=1 -race
+
+  release:
+    name: Release
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Build Windows binary
+        run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o bin/satvos-connector.exe ./cmd/connector
+
+      - name: Generate checksum
+        run: cd bin && sha256sum satvos-connector.exe > satvos-connector.exe.sha256
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-south-1
+
+      - name: Upload to S3
+        run: |
+          COMMIT_SHORT=$(echo $GITHUB_SHA | cut -c1-7)
+          aws s3 cp bin/satvos-connector.exe "s3://satvos-uploads/connectors/tally/${COMMIT_SHORT}/satvos-connector.exe"
+          aws s3 cp bin/satvos-connector.exe.sha256 "s3://satvos-uploads/connectors/tally/${COMMIT_SHORT}/satvos-connector.exe.sha256"
+          aws s3 cp bin/satvos-connector.exe "s3://satvos-uploads/connectors/tally/latest/satvos-connector.exe"
+          aws s3 cp bin/satvos-connector.exe.sha256 "s3://satvos-uploads/connectors/tally/latest/satvos-connector.exe.sha256"

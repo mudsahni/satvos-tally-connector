@@ -51,15 +51,24 @@ func ParseImportResponse(data []byte) (*ImportResult, error) {
 	var resp importResponse
 	if err := xml.Unmarshal(data, &resp); err != nil {
 		// If structured parsing fails, try envelope wrapper.
+		type envelopeImportResponse struct {
+			Created   int    `xml:"CREATED"`
+			Altered   int    `xml:"ALTERED"`
+			LineError string `xml:"LINEERROR"`
+		}
 		type envelope struct {
-			XMLName  xml.Name       `xml:"ENVELOPE"`
-			Response importResponse `xml:"BODY>DATA>IMPORTRESULT"`
+			XMLName  xml.Name               `xml:"ENVELOPE"`
+			Response envelopeImportResponse `xml:"BODY>DATA>IMPORTRESULT"`
 		}
 		var env envelope
 		if envErr := xml.Unmarshal(data, &env); envErr != nil {
 			return nil, fmt.Errorf("parsing import response: %w", err)
 		}
-		resp = env.Response
+		resp = importResponse{
+			Created:   env.Response.Created,
+			Altered:   env.Response.Altered,
+			LineError: env.Response.LineError,
+		}
 	}
 
 	result := &ImportResult{

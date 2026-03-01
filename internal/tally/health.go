@@ -52,7 +52,7 @@ func (c *Client) GetUnits(ctx context.Context) ([]TallyUnit, error) {
 	return ParseUnitResponse(resp)
 }
 
-// GetCostCentres exports all cost centre master data from Tally.
+// GetCostCentres exports all cost center master data from Tally. //nolint:misspell // Tally uses British spelling
 func (c *Client) GetCostCentres(ctx context.Context) ([]TallyCostCentre, error) {
 	reqXML := BuildMasterExportRequest("CostCentre")
 	resp, err := c.SendRequest(ctx, reqXML)

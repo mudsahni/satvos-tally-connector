@@ -354,15 +354,15 @@ func TestClient_GetCostCentres_Success(t *testing.T) {
 	defer ts.Close()
 
 	client := newTestClient(ts)
-	centres, err := client.GetCostCentres(context.Background())
+	centers, err := client.GetCostCentres(context.Background()) //nolint:misspell // Tally uses British spelling
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(centres) != 1 {
-		t.Fatalf("expected 1 cost centre, got %d", len(centres))
+	if len(centers) != 1 {
+		t.Fatalf("expected 1 cost center, got %d", len(centers))
 	}
-	if centres[0].Name != "Head Office" {
-		t.Errorf("expected 'Head Office', got '%s'", centres[0].Name)
+	if centers[0].Name != "Head Office" {
+		t.Errorf("expected 'Head Office', got '%s'", centers[0].Name)
 	}
 }
 
@@ -428,4 +428,3 @@ func TestParseImportResponse_EmptyResponse(t *testing.T) {
 		t.Errorf("expected created=0, got %d", result.Created)
 	}
 }
-

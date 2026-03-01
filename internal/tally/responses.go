@@ -58,7 +58,7 @@ type TallyUnit struct {
 	FormalName string `xml:"FORMALNAME"`
 }
 
-// TallyCostCentre represents a cost centre from Tally's export response.
+// TallyCostCentre represents a cost center from Tally's export response. //nolint:misspell // Tally uses British spelling
 type TallyCostCentre struct {
 	Name   string `xml:"NAME"`
 	Parent string `xml:"PARENT"`
@@ -116,15 +116,15 @@ func ParseUnitResponse(data []byte) ([]TallyUnit, error) {
 	return env.Units, nil
 }
 
-// ParseCostCentreResponse parses a Tally cost centre master export response.
+// ParseCostCentreResponse parses a Tally cost center master export response. //nolint:misspell // Tally uses British spelling
 func ParseCostCentreResponse(data []byte) ([]TallyCostCentre, error) {
 	type envelope struct {
-		XMLName     xml.Name           `xml:"ENVELOPE"`
+		XMLName     xml.Name          `xml:"ENVELOPE"`
 		CostCentres []TallyCostCentre `xml:"BODY>DATA>COLLECTION>COSTCENTRE"`
 	}
 	var env envelope
 	if err := xml.Unmarshal(data, &env); err != nil {
-		return nil, fmt.Errorf("parsing cost centre response: %w", err)
+		return nil, fmt.Errorf("parsing cost center response: %w", err)
 	}
 	return env.CostCentres, nil
 }

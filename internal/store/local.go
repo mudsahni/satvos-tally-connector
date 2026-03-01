@@ -27,7 +27,7 @@ type LocalStore struct {
 // The directory is created if it does not exist. If a state file already exists
 // it is loaded; otherwise the store starts with a zero-value State.
 func New(dir string) (*LocalStore, error) {
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("creating state dir: %w", err)
 	}
 	s := &LocalStore{path: filepath.Join(dir, "state.json")}
@@ -64,7 +64,7 @@ func (s *LocalStore) save() error {
 		return err
 	}
 	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0600); err != nil {
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, s.path)

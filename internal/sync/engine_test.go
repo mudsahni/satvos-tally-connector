@@ -44,7 +44,7 @@ func tallyCompanyXML(name string) string {
 	return `<ENVELOPE><RESULT>` + name + `</RESULT></ENVELOPE>`
 }
 
-// tallyMasterXML returns a minimal Tally ledger+stock item+godown+unit+cost centre response.
+// tallyMasterXML returns a minimal Tally ledger+stock item+godown+unit+cost center response.
 func tallyMasterXML(masterType string) string {
 	switch masterType {
 	case "Ledger":
@@ -108,16 +108,16 @@ func TestEngine_RunCycle_TallyUnavailable(t *testing.T) {
 			assert.False(t, req.TallyConnected, "heartbeat should indicate tally not connected")
 
 			w.WriteHeader(http.StatusOK)
-			w.Write(apiOK(t, nil))
+			_, _ = w.Write(apiOK(t, nil))
 
 		case "/api/v1/sync/v1/masters":
 			mastersCalled.Add(1)
 			w.WriteHeader(http.StatusOK)
-			w.Write(apiOK(t, nil))
+			_, _ = w.Write(apiOK(t, nil))
 
 		default:
 			w.WriteHeader(http.StatusOK)
-			w.Write(apiOK(t, nil))
+			_, _ = w.Write(apiOK(t, nil))
 		}
 	}))
 	defer cloudServer.Close()
@@ -173,7 +173,7 @@ func TestEngine_RunCycle_FullCycle(t *testing.T) {
 			assert.True(t, req.TallyConnected, "heartbeat should indicate tally connected")
 
 			w.WriteHeader(http.StatusOK)
-			w.Write(apiOK(t, nil))
+			_, _ = w.Write(apiOK(t, nil))
 
 		case "/api/v1/sync/v1/masters":
 			mastersCalled.Add(1)
@@ -186,10 +186,10 @@ func TestEngine_RunCycle_FullCycle(t *testing.T) {
 			assert.Equal(t, 1, len(payload.StockItems), "expected 1 stock item")
 			assert.Equal(t, 1, len(payload.Godowns), "expected 1 godown")
 			assert.Equal(t, 1, len(payload.Units), "expected 1 unit")
-			assert.Equal(t, 1, len(payload.CostCentres), "expected 1 cost centre")
+			assert.Equal(t, 1, len(payload.CostCentres), "expected 1 cost center") //nolint:misspell // Tally uses British spelling
 
 			w.WriteHeader(http.StatusOK)
-			w.Write(apiOK(t, nil))
+			_, _ = w.Write(apiOK(t, nil))
 
 		case "/api/v1/sync/v1/outbound":
 			outboundCalled.Add(1)
@@ -205,7 +205,7 @@ func TestEngine_RunCycle_FullCycle(t *testing.T) {
 				NextCursor: "cursor-next",
 			}
 			w.WriteHeader(http.StatusOK)
-			w.Write(apiOK(t, resp))
+			_, _ = w.Write(apiOK(t, resp))
 
 		case "/api/v1/sync/v1/ack":
 			ackCalled.Add(1)
@@ -219,11 +219,11 @@ func TestEngine_RunCycle_FullCycle(t *testing.T) {
 			assert.Equal(t, "doc-001", req.Results[0].DocumentID)
 
 			w.WriteHeader(http.StatusOK)
-			w.Write(apiOK(t, nil))
+			_, _ = w.Write(apiOK(t, nil))
 
 		default:
 			w.WriteHeader(http.StatusOK)
-			w.Write(apiOK(t, nil))
+			_, _ = w.Write(apiOK(t, nil))
 		}
 	}))
 	defer cloudServer.Close()
@@ -242,28 +242,28 @@ func TestEngine_RunCycle_FullCycle(t *testing.T) {
 		switch {
 		case strings.Contains(bodyStr, "$$CurrentCompany"):
 			companyInfoCalls.Add(1)
-			w.Write([]byte(tallyCompanyXML("Test Corp")))
+			_, _ = w.Write([]byte(tallyCompanyXML("Test Corp")))
 
 		case strings.Contains(bodyStr, "LedgerList"):
-			w.Write([]byte(tallyMasterXML("Ledger")))
+			_, _ = w.Write([]byte(tallyMasterXML("Ledger")))
 
 		case strings.Contains(bodyStr, "StockItemList"):
-			w.Write([]byte(tallyMasterXML("StockItem")))
+			_, _ = w.Write([]byte(tallyMasterXML("StockItem")))
 
 		case strings.Contains(bodyStr, "GodownList"):
-			w.Write([]byte(tallyMasterXML("Godown")))
+			_, _ = w.Write([]byte(tallyMasterXML("Godown")))
 
 		case strings.Contains(bodyStr, "UnitList"):
-			w.Write([]byte(tallyMasterXML("Unit")))
+			_, _ = w.Write([]byte(tallyMasterXML("Unit")))
 
 		case strings.Contains(bodyStr, "CostCentreList"):
-			w.Write([]byte(tallyMasterXML("CostCentre")))
+			_, _ = w.Write([]byte(tallyMasterXML("CostCentre")))
 
 		case strings.Contains(bodyStr, "<TALLYREQUEST>Import</TALLYREQUEST>"):
-			w.Write([]byte(tallyImportSuccessXML()))
+			_, _ = w.Write([]byte(tallyImportSuccessXML()))
 
 		default:
-			w.Write([]byte(tallyCompanyXML("Test Corp")))
+			_, _ = w.Write([]byte(tallyCompanyXML("Test Corp")))
 		}
 	}))
 	defer tallyServer.Close()
@@ -309,11 +309,11 @@ func TestEngine_RunCycle_OutboundImportError(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/v1/sync/v1/heartbeat":
 			w.WriteHeader(http.StatusOK)
-			w.Write(apiOK(t, nil))
+			_, _ = w.Write(apiOK(t, nil))
 
 		case "/api/v1/sync/v1/masters":
 			w.WriteHeader(http.StatusOK)
-			w.Write(apiOK(t, nil))
+			_, _ = w.Write(apiOK(t, nil))
 
 		case "/api/v1/sync/v1/outbound":
 			resp := cloud.OutboundResponse{
@@ -327,7 +327,7 @@ func TestEngine_RunCycle_OutboundImportError(t *testing.T) {
 				NextCursor: "cursor-next",
 			}
 			w.WriteHeader(http.StatusOK)
-			w.Write(apiOK(t, resp))
+			_, _ = w.Write(apiOK(t, resp))
 
 		case "/api/v1/sync/v1/ack":
 			ackCalled.Add(1)
@@ -341,11 +341,11 @@ func TestEngine_RunCycle_OutboundImportError(t *testing.T) {
 			assert.Equal(t, "evt-001", req.Results[0].SyncEventID)
 
 			w.WriteHeader(http.StatusOK)
-			w.Write(apiOK(t, nil))
+			_, _ = w.Write(apiOK(t, nil))
 
 		default:
 			w.WriteHeader(http.StatusOK)
-			w.Write(apiOK(t, nil))
+			_, _ = w.Write(apiOK(t, nil))
 		}
 	}))
 	defer cloudServer.Close()
@@ -359,17 +359,17 @@ func TestEngine_RunCycle_OutboundImportError(t *testing.T) {
 
 		switch {
 		case strings.Contains(bodyStr, "$$CurrentCompany"):
-			w.Write([]byte(tallyCompanyXML("Test Corp")))
+			_, _ = w.Write([]byte(tallyCompanyXML("Test Corp")))
 
 		case strings.Contains(bodyStr, "List"):
 			// Master requests — return empty collections.
-			w.Write([]byte(`<ENVELOPE><BODY><DATA><COLLECTION></COLLECTION></DATA></BODY></ENVELOPE>`))
+			_, _ = w.Write([]byte(`<ENVELOPE><BODY><DATA><COLLECTION></COLLECTION></DATA></BODY></ENVELOPE>`))
 
 		case strings.Contains(bodyStr, "<TALLYREQUEST>Import</TALLYREQUEST>"):
-			w.Write([]byte(tallyImportErrorXML("Ledger not found")))
+			_, _ = w.Write([]byte(tallyImportErrorXML("Ledger not found")))
 
 		default:
-			w.Write([]byte(tallyCompanyXML("Test Corp")))
+			_, _ = w.Write([]byte(tallyCompanyXML("Test Corp")))
 		}
 	}))
 	defer tallyServer.Close()
@@ -390,7 +390,7 @@ func TestEngine_Stop(t *testing.T) {
 	// Mock SATVOS cloud server — just accept everything.
 	cloudServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write(apiOK(t, nil))
+		_, _ = w.Write(apiOK(t, nil))
 	}))
 	defer cloudServer.Close()
 
@@ -433,14 +433,14 @@ func TestEngine_GetStatus(t *testing.T) {
 	// Mock Tally server — returns company info.
 	tallyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/xml; charset=utf-8")
-		w.Write([]byte(tallyCompanyXML("Status Corp")))
+		_, _ = w.Write([]byte(tallyCompanyXML("Status Corp")))
 	}))
 	defer tallyServer.Close()
 
 	// Mock SATVOS cloud server (not used by GetStatus, but needed for engine construction).
 	cloudServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write(apiOK(t, nil))
+		_, _ = w.Write(apiOK(t, nil))
 	}))
 	defer cloudServer.Close()
 
@@ -466,4 +466,3 @@ func TestEngine_GetStatus(t *testing.T) {
 	assert.Equal(t, 9000, status.TallyPort)
 	assert.Equal(t, "agent-xyz", status.AgentID)
 }
-
