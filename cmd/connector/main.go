@@ -17,7 +17,7 @@ import (
 	"github.com/mudsahni/satvos-tally-connector/internal/config"
 	"github.com/mudsahni/satvos-tally-connector/internal/store"
 	"github.com/mudsahni/satvos-tally-connector/internal/svc"
-	"github.com/mudsahni/satvos-tally-connector/internal/sync"
+	engsync "github.com/mudsahni/satvos-tally-connector/internal/sync"
 	"github.com/mudsahni/satvos-tally-connector/internal/tally"
 	"github.com/mudsahni/satvos-tally-connector/internal/ui"
 )
@@ -60,21 +60,76 @@ func run() error {
 }
 
 // runSetupMode starts only the UI server so the user can enter their API key
-// via the setup wizard at http://localhost:<port>/setup.
+// via the setup wizard at http://localhost:<port>/setup.html.
+// When the user saves a valid API key, the startEngine callback initializes and
+// starts the sync engine inline — no restart required.
 func runSetupMode(cfg *config.Config, stateDir string) error {
 	log.Println("No API key configured — starting in setup mode")
 
-	uiServer := ui.NewServer(cfg.UI.Port, nil, stateDir)
-
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	// The startEngine callback is invoked by the UI handler when the user saves
+	// an API key. It wires up the full sync infrastructure and returns a ready
+	// engine (not yet started — the handler starts it in a goroutine).
+	startEngine := func(apiKey string) (*engsync.Engine, error) {
+		// Reload config so it picks up the newly-written connector.yaml.
+		newCfg, err := config.Load()
+		if err != nil {
+			return nil, fmt.Errorf("reloading config: %w", err)
+		}
+
+		localStore, err := store.New(stateDir)
+		if err != nil {
+			return nil, fmt.Errorf("initializing store: %w", err)
+		}
+
+		// Discover Tally
+		tallyPort := newCfg.Tally.Port
+		if tallyPort == 0 {
+			state := localStore.Get()
+			if state.TallyPort > 0 {
+				tallyPort = state.TallyPort
+				log.Printf("Using cached Tally port: %d", tallyPort)
+			} else {
+				discovered, discErr := tally.Discover(ctx, newCfg.Tally.Host)
+				if discErr != nil {
+					log.Printf("WARNING: Tally not found: %v (will retry in sync cycle)", discErr)
+					tallyPort = tally.DefaultPort
+				} else {
+					tallyPort = discovered
+					_ = localStore.Update(func(s *store.State) { s.TallyPort = tallyPort })
+				}
+			}
+		}
+
+		cloudClient := cloud.NewClient(newCfg.SATVOS.BaseURL, newCfg.SATVOS.APIKey)
+		tallyClient := tally.NewClient(newCfg.Tally.Host, tallyPort)
+
+		// Register with SATVOS
+		resp, regErr := cloudClient.Register(ctx, cloud.RegisterRequest{
+			Version: version,
+			OSInfo:  fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
+		})
+		if regErr != nil {
+			log.Printf("WARNING: registration failed: %v (will retry via heartbeat)", regErr)
+		} else {
+			log.Printf("Registered as agent %s", resp.ID)
+			_ = localStore.Update(func(s *store.State) { s.AgentID = resp.ID })
+		}
+
+		engine := engsync.NewEngine(newCfg, cloudClient, tallyClient, localStore, version)
+		log.Printf("Sync engine initialized (interval: %ds)", newCfg.Sync.IntervalSeconds)
+		return engine, nil
+	}
+
+	uiServer := ui.NewServer(cfg.UI.Port, nil, stateDir, startEngine)
 
 	setupURL := fmt.Sprintf("http://localhost:%d/setup.html", cfg.UI.Port)
 	log.Printf("Opening setup wizard: %s", setupURL)
 	openBrowser(setupURL)
 
 	log.Printf("Setup UI running at %s — configure your API key there", setupURL)
-	log.Println("After saving, restart the connector to begin syncing")
 
 	if err := uiServer.Start(ctx); err != nil && err != context.Canceled {
 		return err
@@ -125,9 +180,9 @@ func runNormalMode(cfg *config.Config, stateDir string) error {
 		_ = localStore.Update(func(s *store.State) { s.AgentID = resp.ID })
 	}
 
-	// Create sync engine and UI
-	engine := sync.NewEngine(cfg, cloudClient, tallyClient, localStore, version)
-	uiServer := ui.NewServer(cfg.UI.Port, engine, stateDir)
+	// Create sync engine and UI (no startEngine callback needed — engine already running)
+	engine := engsync.NewEngine(cfg, cloudClient, tallyClient, localStore, version)
+	uiServer := ui.NewServer(cfg.UI.Port, engine, stateDir, nil)
 
 	// Graceful shutdown
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

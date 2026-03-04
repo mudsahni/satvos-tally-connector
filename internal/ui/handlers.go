@@ -1,8 +1,8 @@
 package ui
 
 import (
-	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 
@@ -16,14 +16,15 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if s.engine == nil {
+	engine := s.getEngine()
+	if engine == nil {
 		_ = json.NewEncoder(w).Encode(sync.Status{
 			TallyConnected: false,
 			LastSyncError:  "Setup required: no API key configured",
 		})
 		return
 	}
-	status := s.engine.GetStatus()
+	status := engine.GetStatus()
 	_ = json.NewEncoder(w).Encode(status)
 }
 
@@ -33,12 +34,13 @@ func (s *Server) handleTriggerSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if s.engine == nil {
+	engine := s.getEngine()
+	if engine == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "connector not configured yet"})
 		return
 	}
-	go s.engine.TriggerSync(context.Background())
+	go engine.TriggerSync(s.ctx)
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "sync triggered"})
 }
 
@@ -48,6 +50,13 @@ func (s *Server) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+
+	// Don't allow reconfiguration if engine is already running.
+	if s.getEngine() != nil {
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "connector is already configured"})
+		return
+	}
 
 	var req struct {
 		APIKey string `json:"api_key"`
@@ -65,14 +74,40 @@ func (s *Server) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Persist the API key to disk.
 	if err := config.WriteConfigFile(s.stateDir, apiKey); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "failed to save config: " + err.Error()})
 		return
 	}
 
+	// If a startEngine callback was provided, initialize and start the engine
+	// inline so the user doesn't have to restart the connector.
+	if s.startEngine != nil {
+		engine, err := s.startEngine(apiKey)
+		if err != nil {
+			log.Printf("[ui] engine start failed: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error": "Config saved, but engine failed to start: " + err.Error() + ". Please restart the connector.",
+			})
+			return
+		}
+
+		s.setEngine(engine)
+
+		// Start the sync engine in the background using the server's context.
+		go func() {
+			if err := engine.Start(s.ctx); err != nil {
+				log.Printf("[ui] sync engine stopped: %v", err)
+			}
+		}()
+
+		log.Println("[ui] sync engine started via setup wizard")
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]string{
-		"status":  "saved",
-		"message": "Configuration saved. Please restart the connector.",
+		"status":  "ok",
+		"message": "Configuration saved. Sync engine started.",
 	})
 }

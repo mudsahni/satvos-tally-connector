@@ -19,6 +19,7 @@
         .status-value { font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
         .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
         .dot.green { background: #22c55e; }
+        .dot.yellow { background: #eab308; }
         .dot.red { background: #ef4444; }
         .dot.gray { background: #ccc; }
         .error-banner { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin-bottom: 20px; color: #991b1b; font-size: 14px; display: none; }
@@ -101,9 +102,12 @@
                     if (data.tally_connected) {
                         setDot(document.getElementById("tally-dot"), "green");
                         document.getElementById("tally-text").textContent = "Connected";
+                    } else if (data.tally_reachable) {
+                        setDot(document.getElementById("tally-dot"), "yellow");
+                        document.getElementById("tally-text").textContent = data.tally_error || "No company open";
                     } else {
                         setDot(document.getElementById("tally-dot"), "red");
-                        document.getElementById("tally-text").textContent = "Disconnected";
+                        document.getElementById("tally-text").textContent = "Not detected";
                     }
 
                     document.getElementById("company").textContent = data.tally_company || "--";

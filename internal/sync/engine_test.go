@@ -462,7 +462,9 @@ func TestEngine_GetStatus(t *testing.T) {
 
 	status := eng.GetStatus()
 	assert.True(t, status.TallyConnected, "tally should be connected")
+	assert.True(t, status.TallyReachable, "tally should be reachable")
 	assert.Equal(t, "Status Corp", status.TallyCompany)
 	assert.Equal(t, 9000, status.TallyPort)
 	assert.Equal(t, "agent-xyz", status.AgentID)
+	assert.Empty(t, status.TallyError)
 }

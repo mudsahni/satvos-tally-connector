@@ -7,31 +7,50 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
-	"github.com/mudsahni/satvos-tally-connector/internal/sync"
+	engsync "github.com/mudsahni/satvos-tally-connector/internal/sync"
 )
 
 //go:embed static
 var staticFiles embed.FS
 
+// StartEngineFunc is called after the setup wizard saves a valid API key.
+// It receives the API key and should initialize the sync engine, returning it.
+// If it returns an error, the setup page will display the error to the user.
+type StartEngineFunc func(apiKey string) (*engsync.Engine, error)
+
 // Server serves the local web UI for setup and status monitoring.
 type Server struct {
-	port     int
-	engine   *sync.Engine // nil in setup mode
-	stateDir string       // directory for saving config files
-	server   *http.Server
+	port        int
+	stateDir    string
+	startEngine StartEngineFunc // called once after setup saves an API key
+	server      *http.Server
+
+	mu     sync.RWMutex
+	engine *engsync.Engine // nil until configured
+	ctx    context.Context // stored so we can start the engine in the handler
 }
 
-// NewServer creates a new UI server on the given port, backed by the sync engine.
+// NewServer creates a new UI server on the given port.
 // engine may be nil if the connector is in setup mode (no API key configured).
-func NewServer(port int, engine *sync.Engine, stateDir string) *Server {
-	return &Server{port: port, engine: engine, stateDir: stateDir}
+// startEngine is called when the user saves config via the setup wizard; it may be nil
+// if the engine is already running.
+func NewServer(port int, engine *engsync.Engine, stateDir string, startEngine StartEngineFunc) *Server {
+	return &Server{
+		port:        port,
+		engine:      engine,
+		stateDir:    stateDir,
+		startEngine: startEngine,
+	}
 }
 
 // Start begins serving the web UI. It blocks until the context is canceled
 // or the server encounters a fatal error.
 func (s *Server) Start(ctx context.Context) error {
+	s.ctx = ctx
+
 	mux := http.NewServeMux()
 
 	// Static file serving
@@ -66,4 +85,16 @@ func (s *Server) Start(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+func (s *Server) getEngine() *engsync.Engine {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.engine
+}
+
+func (s *Server) setEngine(e *engsync.Engine) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.engine = e
 }
