@@ -22,7 +22,7 @@ import (
 	"github.com/mudsahni/satvos-tally-connector/internal/ui"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 func main() {
 	if svc.IsWindowsService() {
@@ -40,7 +40,7 @@ func main() {
 }
 
 func run() error {
-	log.Printf("SATVOS Tally Connector v%s starting...", version)
+	log.Printf("SATVOS Tally Connector v%s (build: xml-sanitize+post-outbound) starting...", version)
 
 	// 1. Load config
 	cfg, err := config.Load()
