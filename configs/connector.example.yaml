@@ -1,5 +1,5 @@
 satvos:
-  base_url: "https://api.satvos.com"
+  base_url: "https://satvos-backend-production.up.railway.app"
   api_key: "sk_your_api_key_here"
 
 tally:

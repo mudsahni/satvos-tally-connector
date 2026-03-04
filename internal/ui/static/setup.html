@@ -24,6 +24,7 @@
         .status-value { font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
         .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
         .dot.green { background: #22c55e; }
+        .dot.yellow { background: #eab308; }
         .dot.red { background: #ef4444; }
         .dot.gray { background: #ccc; }
         .btn { background: #1a1a2e; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-size: 14px; cursor: pointer; transition: background 0.2s; }
@@ -55,12 +56,8 @@
         <div class="card success-card" id="success-card">
             <h2>Setup Complete</h2>
             <p>
-                Your API key has been saved. Please close this window and
-                <strong>restart the connector</strong> to begin syncing with SATVOS.
-            </p>
-            <p style="margin-top: 8px;">
-                If running as a Windows service, the service will restart automatically.
-                Otherwise, close and re-open the connector application.
+                Your API key has been saved and the sync engine is starting.
+                Redirecting to the dashboard...
             </p>
         </div>
 
@@ -121,6 +118,9 @@
                     if (data.tally_connected) {
                         setDot(dotEl, "green");
                         textEl.textContent = "Connected";
+                    } else if (data.tally_reachable) {
+                        setDot(dotEl, "yellow");
+                        textEl.textContent = data.tally_error || "No company open";
                     } else {
                         setDot(dotEl, "red");
                         textEl.textContent = "Not detected";
@@ -164,6 +164,7 @@
                     }
                     document.getElementById("setup-form").style.display = "none";
                     document.getElementById("success-card").style.display = "block";
+                    setTimeout(function() { window.location.href = "/"; }, 2000);
                 })
                 .catch(function() {
                     fb.textContent = "Connection error. Is the connector still running?";

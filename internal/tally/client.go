@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -61,6 +63,27 @@ func (c *Client) SendRequest(ctx context.Context, xmlBody []byte) ([]byte, error
 
 // IsAvailable returns true if Tally is reachable and responds with company info.
 func (c *Client) IsAvailable(ctx context.Context) bool {
-	_, err := c.GetCompanyInfo(ctx)
-	return err == nil
+	info, err := c.GetCompanyInfo(ctx)
+	if err != nil {
+		log.Printf("[tally] availability check failed (%s): %v", c.baseURL, err)
+		return false
+	}
+	log.Printf("[tally] available — company: %s", info.Name)
+	return true
+}
+
+// CheckStatus returns a richer status for the UI: reachable, company open, error.
+func (c *Client) CheckStatus(ctx context.Context) (reachable bool, company, errMsg string) {
+	info, err := c.GetCompanyInfo(ctx)
+	if err == nil {
+		return true, info.Name, ""
+	}
+
+	// If the error mentions "no company is open", Tally is reachable but idle.
+	errStr := err.Error()
+	if strings.Contains(errStr, "no company is open") {
+		return true, "", "Tally is running but no company is open"
+	}
+
+	return false, "", errStr
 }

@@ -73,8 +73,10 @@ func (e *Engine) TriggerSync(ctx context.Context) {
 // Status holds the current sync status for the UI.
 type Status struct {
 	TallyConnected bool   `json:"tally_connected"`
+	TallyReachable bool   `json:"tally_reachable"`
 	TallyCompany   string `json:"tally_company"`
 	TallyPort      int    `json:"tally_port"`
+	TallyError     string `json:"tally_error,omitempty"`
 	AgentID        string `json:"agent_id"`
 	LastSyncError  string `json:"last_sync_error,omitempty"`
 }
@@ -82,10 +84,19 @@ type Status struct {
 // GetStatus returns the current sync status for the UI.
 func (e *Engine) GetStatus() Status {
 	state := e.store.Get()
+	reachable, company, errMsg := e.tallyClient.CheckStatus(context.Background())
+	if company != "" {
+		// Update cached company name.
+		_ = e.store.Update(func(s *store.State) { s.TallyCompany = company })
+	} else {
+		company = state.TallyCompany
+	}
 	return Status{
-		TallyConnected: e.tallyClient.IsAvailable(context.Background()),
-		TallyCompany:   state.TallyCompany,
+		TallyConnected: reachable && company != "",
+		TallyReachable: reachable,
+		TallyCompany:   company,
 		TallyPort:      state.TallyPort,
+		TallyError:     errMsg,
 		AgentID:        state.AgentID,
 	}
 }
