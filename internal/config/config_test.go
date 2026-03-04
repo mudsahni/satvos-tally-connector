@@ -78,14 +78,28 @@ func TestLoad_EnvOverride(t *testing.T) {
 	assert.Equal(t, 9999, cfg.UI.Port)
 }
 
-func TestLoad_MissingAPIKey(t *testing.T) {
+func TestLoad_MissingAPIKey_NeedsSetup(t *testing.T) {
 	clearConnectorEnv(t)
 	// Deliberately do NOT set CONNECTOR_SATVOS_API_KEY.
 
 	cfg, err := Load()
-	assert.Nil(t, cfg)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "satvos.api_key is required")
+	require.NoError(t, err, "missing API key should not be a load error (setup mode)")
+	assert.True(t, cfg.NeedsSetup(), "config without API key should need setup")
+}
+
+func TestNeedsSetup_WithKey(t *testing.T) {
+	cfg := &Config{SATVOS: SATVOSConfig{APIKey: "sk_test"}}
+	assert.False(t, cfg.NeedsSetup())
+}
+
+func TestWriteConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	err := WriteConfigFile(dir, "sk_test_key_abc")
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(filepath.Join(dir, "connector.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "sk_test_key_abc")
 }
 
 func TestLoad_IntervalClamp(t *testing.T) {
