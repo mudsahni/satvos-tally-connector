@@ -7,6 +7,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -65,17 +67,37 @@ func (c *Client) SendRequest(ctx context.Context, xmlBody []byte) ([]byte, error
 
 // sanitizeXML removes control characters (U+0000–U+001F) that are illegal in
 // XML 1.0, except for tab (U+0009), newline (U+000A), and carriage return
-// (U+000D). Tally Prime occasionally includes such characters in its responses.
+// (U+000D). Handles both raw bytes AND XML character references (&#4; &#x4;)
+// that Tally Prime occasionally includes in its responses.
 func sanitizeXML(data []byte) []byte {
+	// Step 1: strip raw control bytes.
 	clean := make([]byte, 0, len(data))
 	for _, b := range data {
 		if b < 0x20 && b != 0x09 && b != 0x0A && b != 0x0D {
-			continue // skip illegal XML control character
+			continue
 		}
 		clean = append(clean, b)
 	}
-	return clean
+	// Step 2: strip XML numeric character references for control characters.
+	// These look like &#4; (decimal) or &#x4; (hex) and Go's xml.Unmarshal
+	// decodes them before validating, causing parse failures.
+	return xmlControlCharRef.ReplaceAllFunc(clean, func(match []byte) []byte {
+		sub := xmlControlCharRef.FindSubmatch(match)
+		var cp int64
+		if sub[1] != nil {
+			cp, _ = strconv.ParseInt(string(sub[1]), 16, 32)
+		} else {
+			cp, _ = strconv.ParseInt(string(sub[2]), 10, 32)
+		}
+		if cp < 0x20 && cp != 0x09 && cp != 0x0A && cp != 0x0D {
+			return nil // strip the entity
+		}
+		return match
+	})
 }
+
+// xmlControlCharRef matches XML numeric character references: &#x1a; or &#26;
+var xmlControlCharRef = regexp.MustCompile(`&#(?:x([0-9a-fA-F]+)|(\d+));`)
 
 // IsAvailable returns true if Tally is reachable and responds with company info.
 func (c *Client) IsAvailable(ctx context.Context) bool {
