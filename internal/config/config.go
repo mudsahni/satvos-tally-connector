@@ -42,7 +42,7 @@ func Load() (*Config, error) {
 
 	// Defaults — every key must be registered so AutomaticEnv can map
 	// CONNECTOR_<SECTION>_<KEY> env vars to the corresponding config path.
-	v.SetDefault("satvos.base_url", "https://api.satvos.com")
+	v.SetDefault("satvos.base_url", "https://satvos-backend-production.up.railway.app")
 	v.SetDefault("satvos.api_key", "")
 	v.SetDefault("tally.host", "localhost")
 	v.SetDefault("tally.port", 0)

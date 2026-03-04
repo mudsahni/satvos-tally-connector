@@ -41,7 +41,7 @@ func TestLoad_Defaults(t *testing.T) {
 	require.NoError(t, err)
 
 	// SATVOS defaults
-	assert.Equal(t, "https://api.satvos.com", cfg.SATVOS.BaseURL)
+	assert.Equal(t, "https://satvos-backend-production.up.railway.app", cfg.SATVOS.BaseURL)
 	assert.Equal(t, "sk_test_key_123", cfg.SATVOS.APIKey)
 
 	// Tally defaults
