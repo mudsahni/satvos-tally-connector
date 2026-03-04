@@ -200,6 +200,7 @@ func (e *Engine) processOutbound(ctx context.Context) {
 		return
 	}
 
+	log.Printf("[sync] outbound: received %d items", len(resp.Items))
 	if len(resp.Items) == 0 {
 		return
 	}
@@ -207,6 +208,7 @@ func (e *Engine) processOutbound(ctx context.Context) {
 	var ackResults []cloud.AckResult
 
 	for _, item := range resp.Items {
+		log.Printf("[sync] outbound item: doc=%s sync_event=%s", item.DocumentID, item.SyncEventID)
 		var vdef convert.VoucherDef
 		if err := json.Unmarshal(item.VoucherDef, &vdef); err != nil {
 			log.Printf("[sync] failed to parse voucher def for doc %s: %v", item.DocumentID, err)
