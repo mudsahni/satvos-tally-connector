@@ -81,17 +81,33 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 
-	if err := cfg.validate(); err != nil {
-		return nil, err
-	}
+	cfg.clamp()
 
 	return &cfg, nil
 }
 
-func (c *Config) validate() error {
-	if c.SATVOS.APIKey == "" {
-		return fmt.Errorf("satvos.api_key is required (set CONNECTOR_SATVOS_API_KEY or in config file)")
+// NeedsSetup returns true if the connector has not been configured yet
+// (i.e., the API key is missing and the user needs to complete the setup wizard).
+func (c *Config) NeedsSetup() bool {
+	return c.SATVOS.APIKey == ""
+}
+
+// WriteConfigFile writes a connector.yaml with the given API key into dir.
+// This is used by the setup wizard to persist the initial configuration.
+func WriteConfigFile(dir, apiKey string) error {
+	content := fmt.Sprintf("satvos:\n  api_key: %q\n", apiKey)
+	path := filepath.Join(dir, "connector.yaml")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("creating config dir: %w", err)
 	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		return fmt.Errorf("writing config file: %w", err)
+	}
+	return nil
+}
+
+// clamp enforces min/max bounds on numeric config values.
+func (c *Config) clamp() {
 	if c.Sync.IntervalSeconds < 5 {
 		c.Sync.IntervalSeconds = 5
 	}
@@ -101,5 +117,4 @@ func (c *Config) validate() error {
 	if c.Sync.RetryAttempts < 1 {
 		c.Sync.RetryAttempts = 3
 	}
-	return nil
 }

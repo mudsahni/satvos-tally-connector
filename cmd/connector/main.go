@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -47,14 +48,49 @@ func run() error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// 2. Local state store
 	stateDir := stateDirectory()
+
+	// 2. Setup mode — no API key configured yet
+	if cfg.NeedsSetup() {
+		return runSetupMode(cfg, stateDir)
+	}
+
+	// 3. Normal mode — fully configured
+	return runNormalMode(cfg, stateDir)
+}
+
+// runSetupMode starts only the UI server so the user can enter their API key
+// via the setup wizard at http://localhost:<port>/setup.
+func runSetupMode(cfg *config.Config, stateDir string) error {
+	log.Println("No API key configured — starting in setup mode")
+
+	uiServer := ui.NewServer(cfg.UI.Port, nil, stateDir)
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	setupURL := fmt.Sprintf("http://localhost:%d/setup.html", cfg.UI.Port)
+	log.Printf("Opening setup wizard: %s", setupURL)
+	openBrowser(setupURL)
+
+	log.Printf("Setup UI running at %s — configure your API key there", setupURL)
+	log.Println("After saving, restart the connector to begin syncing")
+
+	if err := uiServer.Start(ctx); err != nil && err != context.Canceled {
+		return err
+	}
+	return nil
+}
+
+// runNormalMode runs the full connector: discovery, registration, sync engine, and UI.
+func runNormalMode(cfg *config.Config, stateDir string) error {
+	// Local state store
 	localStore, err := store.New(stateDir)
 	if err != nil {
 		return fmt.Errorf("initializing store: %w", err)
 	}
 
-	// 3. Discover Tally
+	// Discover Tally
 	tallyPort := cfg.Tally.Port
 	if tallyPort == 0 {
 		state := localStore.Get()
@@ -73,11 +109,11 @@ func run() error {
 		}
 	}
 
-	// 4. Create clients
+	// Create clients
 	cloudClient := cloud.NewClient(cfg.SATVOS.BaseURL, cfg.SATVOS.APIKey)
 	tallyClient := tally.NewClient(cfg.Tally.Host, tallyPort)
 
-	// 5. Register with SATVOS
+	// Register with SATVOS
 	resp, err := cloudClient.Register(context.Background(), cloud.RegisterRequest{
 		Version: version,
 		OSInfo:  fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
@@ -89,13 +125,11 @@ func run() error {
 		_ = localStore.Update(func(s *store.State) { s.AgentID = resp.ID })
 	}
 
-	// 6. Create sync engine
+	// Create sync engine and UI
 	engine := sync.NewEngine(cfg, cloudClient, tallyClient, localStore, version)
+	uiServer := ui.NewServer(cfg.UI.Port, engine, stateDir)
 
-	// 7. Create UI server
-	uiServer := ui.NewServer(cfg.UI.Port, engine)
-
-	// 8. Graceful shutdown
+	// Graceful shutdown
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -121,4 +155,20 @@ func stateDirectory() string {
 	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".satvos-connector")
+}
+
+// openBrowser opens the given URL in the user's default browser.
+func openBrowser(url string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	case "darwin":
+		cmd = exec.Command("open", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	if err := cmd.Start(); err != nil {
+		log.Printf("WARNING: could not open browser: %v", err)
+	}
 }

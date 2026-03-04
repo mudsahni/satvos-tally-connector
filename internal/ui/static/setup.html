@@ -30,12 +30,14 @@
         .btn:hover { background: #2a2a4e; }
         .btn:disabled { background: #999; cursor: not-allowed; }
         .btn-row { display: flex; gap: 12px; align-items: center; }
-        #connect-feedback { font-size: 13px; margin-top: 8px; min-height: 20px; }
+        #save-feedback { font-size: 13px; margin-top: 8px; min-height: 20px; }
         .feedback-ok { color: #22c55e; }
         .feedback-err { color: #ef4444; }
         a.nav-link { color: #aaa; font-size: 13px; text-decoration: none; margin-left: 16px; }
         a.nav-link:hover { color: #fff; }
         .header-row { display: flex; justify-content: space-between; align-items: center; }
+        .success-card { background: #f0fdf4; border: 1px solid #bbf7d0; display: none; }
+        .success-card p { font-size: 14px; color: #166534; line-height: 1.6; }
     </style>
 </head>
 <body>
@@ -50,43 +52,58 @@
     </header>
 
     <div class="container">
-        <div class="card">
-            <h2>Step 1: API Key</h2>
-            <div class="form-group">
-                <label for="api-key">SATVOS API Key</label>
-                <input type="password" id="api-key" placeholder="sk_...">
-                <p class="hint">Obtain this from your SATVOS dashboard under Settings &gt; Connectors.</p>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2>Step 2: Tally Connection</h2>
-            <div class="status-row">
-                <span class="status-label">Tally Prime</span>
-                <span class="status-value">
-                    <span class="dot gray" id="tally-dot"></span>
-                    <span id="tally-text">Checking...</span>
-                </span>
-            </div>
-            <div class="status-row">
-                <span class="status-label">Company</span>
-                <span class="status-value" id="tally-company">--</span>
-            </div>
-            <div class="status-row">
-                <span class="status-label">Port</span>
-                <span class="status-value" id="tally-port">--</span>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2>Connect</h2>
-            <p style="font-size:14px;color:#666;margin-bottom:16px;">
-                Ensure Tally Prime is running, then click Connect to verify both connections.
+        <div class="card success-card" id="success-card">
+            <h2>Setup Complete</h2>
+            <p>
+                Your API key has been saved. Please close this window and
+                <strong>restart the connector</strong> to begin syncing with SATVOS.
             </p>
-            <div class="btn-row">
-                <button class="btn" id="connect-btn" onclick="connect()">Connect</button>
+            <p style="margin-top: 8px;">
+                If running as a Windows service, the service will restart automatically.
+                Otherwise, close and re-open the connector application.
+            </p>
+        </div>
+
+        <div id="setup-form">
+            <div class="card">
+                <h2>Step 1: API Key</h2>
+                <div class="form-group">
+                    <label for="api-key">SATVOS API Key</label>
+                    <input type="password" id="api-key" placeholder="sk_...">
+                    <p class="hint">Obtain this from your SATVOS dashboard under Settings &gt; Connectors.</p>
+                </div>
             </div>
-            <div id="connect-feedback"></div>
+
+            <div class="card">
+                <h2>Step 2: Tally Connection</h2>
+                <div class="status-row">
+                    <span class="status-label">Tally Prime</span>
+                    <span class="status-value">
+                        <span class="dot gray" id="tally-dot"></span>
+                        <span id="tally-text">Checking...</span>
+                    </span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Company</span>
+                    <span class="status-value" id="tally-company">--</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Port</span>
+                    <span class="status-value" id="tally-port">--</span>
+                </div>
+                <p class="hint" style="margin-top: 12px;">Tally connection will be established after setup. Ensure Tally Prime is running.</p>
+            </div>
+
+            <div class="card">
+                <h2>Save Configuration</h2>
+                <p style="font-size:14px;color:#666;margin-bottom:16px;">
+                    Enter your API key above, then click Save to configure the connector.
+                </p>
+                <div class="btn-row">
+                    <button class="btn" id="save-btn" onclick="saveConfig()">Save &amp; Configure</button>
+                </div>
+                <div id="save-feedback"></div>
+            </div>
         </div>
     </div>
 
@@ -112,30 +129,45 @@
                     document.getElementById("tally-port").textContent = data.tally_port || "--";
                 })
                 .catch(function() {
-                    setDot(document.getElementById("tally-dot"), "red");
-                    document.getElementById("tally-text").textContent = "Agent unreachable";
+                    setDot(document.getElementById("tally-dot"), "gray");
+                    document.getElementById("tally-text").textContent = "Checking...";
                 });
         }
 
-        function connect() {
-            var btn = document.getElementById("connect-btn");
-            var fb = document.getElementById("connect-feedback");
+        function saveConfig() {
+            var apiKey = document.getElementById("api-key").value.trim();
+            var btn = document.getElementById("save-btn");
+            var fb = document.getElementById("save-feedback");
+
+            if (!apiKey) {
+                fb.textContent = "Please enter your API key.";
+                fb.className = "feedback-err";
+                return;
+            }
+
             btn.disabled = true;
-            fb.textContent = "Connecting...";
+            fb.textContent = "Saving...";
             fb.className = "";
 
-            fetch("/api/sync", { method: "POST" })
-                .then(function(r) { return r.json(); })
-                .then(function() {
-                    fb.textContent = "Connection successful. Sync initiated.";
-                    fb.className = "feedback-ok";
-                    setTimeout(refreshTallyStatus, 2000);
+            fetch("/api/config", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ api_key: apiKey })
+            })
+                .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+                .then(function(result) {
+                    if (!result.ok) {
+                        fb.textContent = result.data.error || "Failed to save configuration.";
+                        fb.className = "feedback-err";
+                        btn.disabled = false;
+                        return;
+                    }
+                    document.getElementById("setup-form").style.display = "none";
+                    document.getElementById("success-card").style.display = "block";
                 })
                 .catch(function() {
-                    fb.textContent = "Connection failed. Check that the agent is running.";
+                    fb.textContent = "Connection error. Is the connector still running?";
                     fb.className = "feedback-err";
-                })
-                .finally(function() {
                     btn.disabled = false;
                 });
         }

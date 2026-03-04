@@ -17,14 +17,16 @@ var staticFiles embed.FS
 
 // Server serves the local web UI for setup and status monitoring.
 type Server struct {
-	port   int
-	engine *sync.Engine
-	server *http.Server
+	port     int
+	engine   *sync.Engine // nil in setup mode
+	stateDir string       // directory for saving config files
+	server   *http.Server
 }
 
 // NewServer creates a new UI server on the given port, backed by the sync engine.
-func NewServer(port int, engine *sync.Engine) *Server {
-	return &Server{port: port, engine: engine}
+// engine may be nil if the connector is in setup mode (no API key configured).
+func NewServer(port int, engine *sync.Engine, stateDir string) *Server {
+	return &Server{port: port, engine: engine, stateDir: stateDir}
 }
 
 // Start begins serving the web UI. It blocks until the context is canceled
@@ -42,6 +44,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// API endpoints
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/sync", s.handleTriggerSync)
+	mux.HandleFunc("/api/config", s.handleSaveConfig)
 
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf("127.0.0.1:%d", s.port),
