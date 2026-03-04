@@ -177,8 +177,8 @@ func TestClient_PushMasters_Success(t *testing.T) {
 
 func TestClient_PullOutbound_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			t.Errorf("expected GET, got %s", r.Method)
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
 		}
 		if r.URL.Path != "/api/v1/sync/v1/outbound" {
 			t.Errorf("unexpected path: %s", r.URL.Path)

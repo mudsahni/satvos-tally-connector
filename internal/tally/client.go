@@ -38,6 +38,8 @@ func NewClientWithHTTPClient(baseURL string, httpClient *http.Client) *Client {
 }
 
 // SendRequest posts raw XML to Tally and returns the response body.
+// The response is sanitized to remove control characters that Tally sometimes
+// includes and that Go's encoding/xml parser rejects.
 func (c *Client) SendRequest(ctx context.Context, xmlBody []byte) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL, bytes.NewReader(xmlBody))
 	if err != nil {
@@ -58,7 +60,21 @@ func (c *Client) SendRequest(ctx context.Context, xmlBody []byte) ([]byte, error
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("tally returned HTTP %d: %s", resp.StatusCode, string(body))
 	}
-	return body, nil
+	return sanitizeXML(body), nil
+}
+
+// sanitizeXML removes control characters (U+0000–U+001F) that are illegal in
+// XML 1.0, except for tab (U+0009), newline (U+000A), and carriage return
+// (U+000D). Tally Prime occasionally includes such characters in its responses.
+func sanitizeXML(data []byte) []byte {
+	clean := make([]byte, 0, len(data))
+	for _, b := range data {
+		if b < 0x20 && b != 0x09 && b != 0x0A && b != 0x0D {
+			continue // skip illegal XML control character
+		}
+		clean = append(clean, b)
+	}
+	return clean
 }
 
 // IsAvailable returns true if Tally is reachable and responds with company info.

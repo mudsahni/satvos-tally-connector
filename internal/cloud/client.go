@@ -30,6 +30,8 @@ func NewClient(baseURL, apiKey string) *Client {
 }
 
 // do executes an HTTP request against the SATVOS API and decodes the response.
+//
+//nolint:unparam // method is currently always POST but keeping it for API flexibility
 func (c *Client) do(ctx context.Context, method, path string, body, result interface{}) error {
 	var bodyReader io.Reader
 	if body != nil {
@@ -108,7 +110,7 @@ func (c *Client) PushMasters(ctx context.Context, payload *MasterPayload) error 
 func (c *Client) PullOutbound(ctx context.Context, cursor string, limit int) (*OutboundResponse, error) {
 	path := fmt.Sprintf("/api/v1/sync/v1/outbound?cursor=%s&limit=%d", url.QueryEscape(cursor), limit)
 	var resp OutboundResponse
-	if err := c.do(ctx, http.MethodGet, path, nil, &resp); err != nil {
+	if err := c.do(ctx, http.MethodPost, path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
