@@ -194,6 +194,8 @@ func (e *Engine) pushMasters(ctx context.Context) {
 
 func (e *Engine) processOutbound(ctx context.Context) {
 	state := e.store.Get()
+	companyName := state.TallyCompany
+
 	resp, err := e.cloudClient.PullOutbound(ctx, state.OutboundCursor, e.cfg.Sync.BatchSize)
 	if err != nil {
 		log.Printf("[sync] failed to pull outbound: %v", err)
@@ -205,10 +207,17 @@ func (e *Engine) processOutbound(ctx context.Context) {
 		return
 	}
 
+	// Collect all unique ledgers referenced across all vouchers so we can
+	// ensure they exist in Tally before importing any vouchers.
+	ledgerSet := make(map[string]tally.LedgerDef)
+	var parsedItems []struct {
+		item cloud.OutboundItem
+		vdef convert.VoucherDef
+	}
+
 	var ackResults []cloud.AckResult
 
 	for _, item := range resp.Items {
-		log.Printf("[sync] outbound item: doc=%s sync_event=%s", item.DocumentID, item.SyncEventID)
 		var vdef convert.VoucherDef
 		if err := json.Unmarshal(item.VoucherDef, &vdef); err != nil {
 			log.Printf("[sync] failed to parse voucher def for doc %s: %v", item.DocumentID, err)
@@ -219,7 +228,53 @@ func (e *Engine) processOutbound(ctx context.Context) {
 			continue
 		}
 
-		xml, err := convert.ToXML(&vdef)
+		// Track ledgers that need to exist.
+		if vdef.PartyLedger != "" {
+			ledgerSet[vdef.PartyLedger] = tally.LedgerDef{
+				Name: vdef.PartyLedger, ParentGroup: "Sundry Creditors",
+			}
+		}
+		if vdef.PurchaseLedger != "" {
+			ledgerSet[vdef.PurchaseLedger] = tally.LedgerDef{
+				Name: vdef.PurchaseLedger, ParentGroup: "Purchase Accounts",
+			}
+		}
+		for _, t := range vdef.TaxEntries {
+			if t.LedgerName != "" {
+				ledgerSet[t.LedgerName] = tally.LedgerDef{
+					Name: t.LedgerName, ParentGroup: "Duties & Taxes",
+				}
+			}
+		}
+
+		parsedItems = append(parsedItems, struct {
+			item cloud.OutboundItem
+			vdef convert.VoucherDef
+		}{item: item, vdef: vdef})
+	}
+
+	// Ensure all referenced ledgers exist in Tally (creates missing ones,
+	// skips existing ones via DUPIGNORECOMBINE).
+	if len(ledgerSet) > 0 {
+		var ledgers []tally.LedgerDef
+		for _, l := range ledgerSet {
+			ledgers = append(ledgers, l)
+		}
+		if err := e.tallyClient.EnsureLedgersExist(ctx, companyName, ledgers); err != nil {
+			log.Printf("[sync] warning: failed to pre-create ledgers: %v", err)
+			// Continue anyway — some ledgers may already exist, and individual
+			// voucher imports will report specific errors.
+		}
+	}
+
+	// Now import each voucher.
+	for _, pi := range parsedItems {
+		item := pi.item
+		vdef := pi.vdef
+
+		log.Printf("[sync] outbound item: doc=%s sync_event=%s", item.DocumentID, item.SyncEventID)
+
+		xmlStr, err := convert.ToXML(&vdef)
 		if err != nil {
 			log.Printf("[sync] failed to convert to XML for doc %s: %v", item.DocumentID, err)
 			ackResults = append(ackResults, cloud.AckResult{
@@ -229,7 +284,7 @@ func (e *Engine) processOutbound(ctx context.Context) {
 			continue
 		}
 
-		result, err := e.tallyClient.ImportVoucher(ctx, xml)
+		result, err := e.tallyClient.ImportVoucher(ctx, xmlStr, companyName)
 		if err != nil {
 			log.Printf("[sync] failed to import voucher for doc %s: %v", item.DocumentID, err)
 			ackResults = append(ackResults, cloud.AckResult{
@@ -244,6 +299,7 @@ func (e *Engine) processOutbound(ctx context.Context) {
 			if len(result.Errors) > 0 {
 				errMsg = result.Errors[0]
 			}
+			log.Printf("[sync] voucher import failed for doc %s: %s", item.DocumentID, errMsg)
 			ackResults = append(ackResults, cloud.AckResult{
 				SyncEventID: item.SyncEventID, DocumentID: item.DocumentID,
 				Success: false, ErrorMessage: errMsg,
@@ -251,9 +307,13 @@ func (e *Engine) processOutbound(ctx context.Context) {
 			continue
 		}
 
+		log.Printf("[sync] voucher imported for doc %s (created=%d, vchid=%s)",
+			item.DocumentID, result.Created, result.LastVchID)
 		ackResults = append(ackResults, cloud.AckResult{
-			SyncEventID: item.SyncEventID, DocumentID: item.DocumentID,
-			Success: true,
+			SyncEventID:    item.SyncEventID,
+			DocumentID:     item.DocumentID,
+			Success:        true,
+			TallyVoucherID: result.LastVchID,
 		})
 	}
 
