@@ -50,7 +50,32 @@ func BuildMasterExportRequest(masterType string) []byte {
 }
 
 // BuildVoucherImportRequest wraps voucher XML for import into Tally.
-func BuildVoucherImportRequest(voucherXML string) []byte {
+func BuildVoucherImportRequest(voucherXML, companyName string) []byte {
+	return []byte(fmt.Sprintf(`<ENVELOPE>
+<HEADER>
+<VERSION>1</VERSION>
+<TALLYREQUEST>Import</TALLYREQUEST>
+<TYPE>Data</TYPE>
+<ID>Vouchers</ID>
+</HEADER>
+<BODY>
+<DESC>
+<STATICVARIABLES>
+<SVCURRENTCOMPANY>%s</SVCURRENTCOMPANY>
+</STATICVARIABLES>
+</DESC>
+<DATA>
+<TALLYMESSAGE>
+%s
+</TALLYMESSAGE>
+</DATA>
+</BODY>
+</ENVELOPE>`, companyName, voucherXML))
+}
+
+// BuildMasterImportRequest wraps master XML (ledgers, groups, stock items)
+// for import into Tally. Uses DUPIGNORECOMBINE to skip existing entries.
+func BuildMasterImportRequest(masterXML, companyName string) []byte {
 	return []byte(fmt.Sprintf(`<ENVELOPE>
 <HEADER>
 <VERSION>1</VERSION>
@@ -61,7 +86,8 @@ func BuildVoucherImportRequest(voucherXML string) []byte {
 <BODY>
 <DESC>
 <STATICVARIABLES>
-<SVCURRENTCOMPANY/>
+<SVCURRENTCOMPANY>%s</SVCURRENTCOMPANY>
+<IMPORTDUPS>@@DUPIGNORECOMBINE</IMPORTDUPS>
 </STATICVARIABLES>
 </DESC>
 <DATA>
@@ -70,5 +96,5 @@ func BuildVoucherImportRequest(voucherXML string) []byte {
 </TALLYMESSAGE>
 </DATA>
 </BODY>
-</ENVELOPE>`, voucherXML))
+</ENVELOPE>`, companyName, masterXML))
 }

@@ -179,7 +179,7 @@ func TestClient_ImportVoucher_Success(t *testing.T) {
 <NARRATION>Test purchase</NARRATION>
 </VOUCHER>`
 
-	result, err := client.ImportVoucher(context.Background(), voucherXML)
+	result, err := client.ImportVoucher(context.Background(), voucherXML, "Test Company")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestClient_ImportVoucher_Error(t *testing.T) {
 <DATE>20240115</DATE>
 </VOUCHER>`
 
-	result, err := client.ImportVoucher(context.Background(), voucherXML)
+	result, err := client.ImportVoucher(context.Background(), voucherXML, "Test Company")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -398,7 +398,7 @@ func TestBuildMasterExportRequest_ContainsMasterType(t *testing.T) {
 
 func TestBuildVoucherImportRequest_ContainsVoucherXML(t *testing.T) {
 	voucherXML := `<VOUCHER VCHTYPE="Purchase"><DATE>20240115</DATE></VOUCHER>`
-	req := BuildVoucherImportRequest(voucherXML)
+	req := BuildVoucherImportRequest(voucherXML, "Test Company")
 	reqStr := string(req)
 	if !strings.Contains(reqStr, voucherXML) {
 		t.Error("expected import request to contain the voucher XML")
@@ -421,10 +421,15 @@ func TestParseImportResponse_EmptyResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.Success {
-		t.Error("expected success=true for empty but valid response")
+	// CREATED=0 and ALTERED=0 with no error means nothing was actually imported.
+	// This should be treated as failure to catch silent Tally rejections.
+	if result.Success {
+		t.Error("expected success=false when nothing was created or altered")
 	}
 	if result.Created != 0 {
 		t.Errorf("expected created=0, got %d", result.Created)
+	}
+	if len(result.Errors) == 0 {
+		t.Error("expected an error message explaining 0 created/altered")
 	}
 }
