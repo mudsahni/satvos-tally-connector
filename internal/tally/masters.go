@@ -44,7 +44,7 @@ func (c *Client) EnsureLedgersExist(ctx context.Context, companyName string, led
 	// With DUPIGNORECOMBINE, existing ledgers are ignored (Created=0 is fine).
 	// Only real errors matter here.
 	if len(result.Errors) > 0 {
-		return fmt.Errorf("Tally ledger creation errors: %s", strings.Join(result.Errors, "; "))
+		return fmt.Errorf("tally ledger creation errors: %s", strings.Join(result.Errors, "; "))
 	}
 
 	return nil

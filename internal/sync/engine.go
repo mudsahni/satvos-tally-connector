@@ -268,9 +268,9 @@ func (e *Engine) processOutbound(ctx context.Context) {
 	}
 
 	// Now import each voucher.
-	for _, pi := range parsedItems {
-		item := pi.item
-		vdef := pi.vdef
+	for i := range parsedItems {
+		item := parsedItems[i].item
+		vdef := parsedItems[i].vdef
 
 		log.Printf("[sync] outbound item: doc=%s sync_event=%s", item.DocumentID, item.SyncEventID)
 
