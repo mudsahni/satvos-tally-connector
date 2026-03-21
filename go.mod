@@ -1,6 +1,6 @@
 module github.com/mudsahni/satvos-tally-connector
 
-go 1.24
+go 1.25.8
 
 require (
 	github.com/spf13/viper v1.21.0
