@@ -54,7 +54,7 @@ func ParseImportResponse(data []byte) (*ImportResult, error) {
 		Deleted    int    `xml:"DELETED"`
 		Exceptions int    `xml:"EXCEPTIONS"`
 		Errors     int    `xml:"ERRORS"`
-		Cancelled  int    `xml:"CANCELLED"`
+		Canceled   int    `xml:"CANCELLED"` //nolint:misspell // Tally uses British spelling
 		Ignored    int    `xml:"IGNORED"`
 		Combined   int    `xml:"COMBINED"`
 		LastVchID  string `xml:"LASTVCHID"`
@@ -131,12 +131,13 @@ func buildResult(created, altered, exceptions, errCount int, lastVchID, lastMID,
 	}
 
 	// Determine success
-	if len(errMsgs) > 0 {
+	switch {
+	case len(errMsgs) > 0:
 		result.Success = false
 		result.Errors = errMsgs
-	} else if created > 0 || altered > 0 {
+	case created > 0 || altered > 0:
 		result.Success = true
-	} else {
+	default:
 		result.Success = false
 		result.Errors = []string{fmt.Sprintf(
 			"Tally created 0 and altered 0 records (exceptions=%d, errors=%d, raw: %s)",
