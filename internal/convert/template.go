@@ -16,22 +16,34 @@ func xmlEscape(s string) string {
 	return xmlReplacer.Replace(s)
 }
 
-const voucherXMLTemplate = `<VOUCHER REMOTEID="{{.RemoteID | xmlEscape}}" VCHTYPE="{{.VoucherType | xmlEscape}}" ACTION="Create">
+const voucherXMLTemplate = `<VOUCHER REMOTEID="{{.RemoteID | xmlEscape}}" VCHTYPE="{{.VoucherTypeName | xmlEscape}}" ACTION="Create">
 <DATE>{{.TallyDate}}</DATE>
-<VOUCHERTYPENAME>{{.VoucherType | xmlEscape}}</VOUCHERTYPENAME>
+<VOUCHERTYPENAME>{{.VoucherTypeName | xmlEscape}}</VOUCHERTYPENAME>
 <VOUCHERNUMBER></VOUCHERNUMBER>
+<REFERENCE>{{.SupplierInvoiceNo | xmlEscape}}</REFERENCE>
+<REFERENCEDATE>{{.SupplierInvoiceDate}}</REFERENCEDATE>
+<ISINVOICE>{{.IsInvoice}}</ISINVOICE>
+<PERSISTEDVIEW>{{.PersistedView}}</PERSISTEDVIEW>
 <NARRATION>{{.Narration | xmlEscape}}</NARRATION>
 <PARTYLEDGERNAME>{{.PartyLedger | xmlEscape}}</PARTYLEDGERNAME>
 <ALLLEDGERENTRIES.LIST>
 <LEDGERNAME>{{.PartyLedger | xmlEscape}}</LEDGERNAME>
 <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
 <AMOUNT>{{printf "%.2f" .TotalAmount}}</AMOUNT>
+{{- if .SupplierInvoiceNo}}
+<BILLALLOCATIONS.LIST>
+<NAME>{{.SupplierInvoiceNo | xmlEscape}}</NAME>
+<BILLTYPE>New Ref</BILLTYPE>
+<AMOUNT>{{printf "%.2f" .TotalAmount}}</AMOUNT>
+</BILLALLOCATIONS.LIST>
+{{- end}}
 </ALLLEDGERENTRIES.LIST>
 <ALLLEDGERENTRIES.LIST>
 <LEDGERNAME>{{.PurchaseLedger | xmlEscape}}</LEDGERNAME>
 <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
 <AMOUNT>{{printf "%.2f" (neg .PurchaseAmount)}}</AMOUNT>
 </ALLLEDGERENTRIES.LIST>
+{{- if ne .VoucherMode "journal"}}
 {{- range .TaxEntries}}
 <ALLLEDGERENTRIES.LIST>
 <LEDGERNAME>{{.LedgerName | xmlEscape}}</LEDGERNAME>
@@ -39,6 +51,8 @@ const voucherXMLTemplate = `<VOUCHER REMOTEID="{{.RemoteID | xmlEscape}}" VCHTYP
 <AMOUNT>{{printf "%.2f" (neg .Amount)}}</AMOUNT>
 </ALLLEDGERENTRIES.LIST>
 {{- end}}
+{{- end}}
+{{- if eq .VoucherMode "item_invoice"}}
 {{- range .InventoryItems}}
 <ALLINVENTORYENTRIES.LIST>
 <STOCKITEMNAME>{{.StockItem | xmlEscape}}</STOCKITEMNAME>
@@ -56,5 +70,6 @@ const voucherXMLTemplate = `<VOUCHER REMOTEID="{{.RemoteID | xmlEscape}}" VCHTYP
 </BATCHALLOCATIONS.LIST>
 {{- end}}
 </ALLINVENTORYENTRIES.LIST>
+{{- end}}
 {{- end}}
 </VOUCHER>`
