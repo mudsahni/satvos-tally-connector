@@ -11,7 +11,11 @@ type VoucherDef struct {
 	InventoryItems []InventoryItem `json:"inventory_items"`
 	TotalAmount    float64         `json:"total_amount"`
 	Narration      string          `json:"narration"`
-	RemoteID       string          `json:"remote_id"`
+	RemoteID            string          `json:"remote_id"`
+	VoucherMode         string          `json:"voucher_mode"`
+	SupplierInvoiceNo   string          `json:"supplier_invoice_no"`
+	SupplierInvoiceDate string          `json:"supplier_invoice_date"`
+	PartyDetails        *PartyDetail    `json:"party_details,omitempty"`
 }
 
 type TaxEntry struct {
@@ -27,4 +31,14 @@ type InventoryItem struct {
 	UOM       string  `json:"uom"`
 	Godown    string  `json:"godown"`
 	HSNCode   string  `json:"hsn_code"`
+}
+
+// PartyDetail holds rich party information for ledger creation in Tally.
+type PartyDetail struct {
+	Name      string `json:"name"`
+	Address   string `json:"address"`
+	PAN       string `json:"pan"`
+	GSTIN     string `json:"gstin"`
+	State     string `json:"state"`
+	StateCode string `json:"state_code"`
 }
