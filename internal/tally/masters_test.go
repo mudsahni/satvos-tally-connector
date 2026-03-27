@@ -14,7 +14,7 @@ func TestBuildLedgerXML_AllFields(t *testing.T) {
 		GSTIN:       "27ABCCE1234F1Z5",
 		State:       "Maharashtra",
 	}
-	xml := BuildLedgerXML(def)
+	xml := BuildLedgerXML(&def)
 
 	checks := []struct {
 		label    string
@@ -44,7 +44,7 @@ func TestBuildLedgerXML_MinimalFields(t *testing.T) {
 		Name:        "Simple Ledger",
 		ParentGroup: "Purchase Accounts",
 	}
-	xml := BuildLedgerXML(def)
+	xml := BuildLedgerXML(&def)
 
 	// Should contain basic fields
 	if !strings.Contains(xml, `<NAME>Simple Ledger</NAME>`) {
@@ -71,7 +71,7 @@ func TestBuildLedgerXML_XMLEscape(t *testing.T) {
 		Name:        `M&M "Foods" <Pvt>`,
 		ParentGroup: "Sundry Creditors",
 	}
-	xml := BuildLedgerXML(def)
+	xml := BuildLedgerXML(&def)
 
 	if !strings.Contains(xml, `M&amp;M &quot;Foods&quot; &lt;Pvt&gt;`) {
 		t.Errorf("XML escaping not applied correctly, got:\n%s", xml)

@@ -75,7 +75,7 @@ const ledgerXMLTemplate = `<LEDGER NAME="{{.Name | xmlEscape}}" ACTION="Create">
 </LEDGER>`
 
 // BuildLedgerXML creates XML for a single Tally ledger.
-func BuildLedgerXML(def LedgerDef) string {
+func BuildLedgerXML(def *LedgerDef) string {
 	var buf bytes.Buffer
 	_ = ledgerTemplate.Execute(&buf, def)
 	return buf.String()
@@ -90,7 +90,7 @@ func (c *Client) EnsureLedgersExist(ctx context.Context, companyName string, led
 
 	var xmlParts []string
 	for _, l := range ledgers {
-		xmlParts = append(xmlParts, BuildLedgerXML(l))
+		xmlParts = append(xmlParts, BuildLedgerXML(&l))
 	}
 	combinedXML := strings.Join(xmlParts, "\n")
 
