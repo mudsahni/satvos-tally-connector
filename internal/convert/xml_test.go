@@ -7,11 +7,14 @@ import (
 
 func fullVoucherDef() *VoucherDef {
 	return &VoucherDef{
-		DocumentID:     "doc-123",
-		VoucherType:    "Purchase",
-		VoucherDate:    "2024-03-15",
-		PartyLedger:    "Acme Corp",
-		PurchaseLedger: "Purchase@18%Gst",
+		DocumentID:          "doc-123",
+		VoucherType:         "Purchase",
+		VoucherMode:         "item_invoice",
+		VoucherDate:         "2024-03-15",
+		PartyLedger:         "Acme Corp",
+		PurchaseLedger:      "Purchase@18%Gst",
+		SupplierInvoiceNo:   "INV-2024-001",
+		SupplierInvoiceDate: "2024-03-10",
 		TaxEntries: []TaxEntry{
 			{LedgerName: "Input Cgst @9%", Amount: 900.00},
 			{LedgerName: "Input Sgst @9%", Amount: 900.00},
@@ -66,7 +69,7 @@ func TestToXML_FullVoucher(t *testing.T) {
 		t.Error("expected tax ledger name in output")
 	}
 
-	// Check inventory item present
+	// Check inventory item present (item_invoice mode)
 	if !strings.Contains(xml, "Widget A") {
 		t.Error("expected stock item name in output")
 	}
@@ -229,6 +232,26 @@ func TestToXML_NoInventory(t *testing.T) {
 	}
 }
 
+func TestToXML_InvalidMode(t *testing.T) {
+	def := &VoucherDef{
+		VoucherType:    "Purchase",
+		VoucherMode:    "invalid_mode",
+		VoucherDate:    "2024-01-01",
+		PartyLedger:    "Test",
+		PurchaseLedger: "Purchase",
+		TotalAmount:    100,
+		RemoteID:       "r-invalid",
+	}
+
+	_, err := ToXML(def)
+	if err == nil {
+		t.Fatal("expected error for invalid voucher mode")
+	}
+	if !strings.Contains(err.Error(), "unrecognized voucher mode") {
+		t.Errorf("expected 'unrecognized voucher mode' error, got: %v", err)
+	}
+}
+
 func TestToXML_NilDef(t *testing.T) {
 	_, err := ToXML(nil)
 	if err == nil {
@@ -272,6 +295,252 @@ func TestToXML_NoTax(t *testing.T) {
 	count := strings.Count(xml, "<ALLLEDGERENTRIES.LIST>")
 	if count != 2 {
 		t.Errorf("expected 2 ALLLEDGERENTRIES.LIST blocks (party + purchase), got %d", count)
+	}
+}
+
+func TestToXML_ItemInvoiceMode(t *testing.T) {
+	def := fullVoucherDef()
+	// fullVoucherDef already uses item_invoice mode
+	xml, err := ToXML(def)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should have VCHTYPE=Purchase
+	if !strings.Contains(xml, `VCHTYPE="Purchase"`) {
+		t.Error("expected VCHTYPE=Purchase for item_invoice mode")
+	}
+	if !strings.Contains(xml, "<ISINVOICE>Yes</ISINVOICE>") {
+		t.Error("expected ISINVOICE=Yes for item_invoice mode")
+	}
+	if !strings.Contains(xml, "<PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>") {
+		t.Error("expected Invoice Voucher View for item_invoice mode")
+	}
+
+	// Should have inventory entries
+	if !strings.Contains(xml, "ALLINVENTORYENTRIES.LIST") {
+		t.Error("expected ALLINVENTORYENTRIES.LIST for item_invoice mode")
+	}
+
+	// Should have tax entries
+	if !strings.Contains(xml, "Input Cgst @9%") {
+		t.Error("expected tax entries for item_invoice mode")
+	}
+}
+
+func TestToXML_AccountingInvoiceMode(t *testing.T) {
+	def := &VoucherDef{
+		VoucherType:    "Purchase",
+		VoucherMode:    "accounting_invoice",
+		VoucherDate:    "2024-06-01",
+		PartyLedger:    "Vendor Y",
+		PurchaseLedger: "Purchase@18%Gst",
+		TaxEntries: []TaxEntry{
+			{LedgerName: "Input Cgst @9%", Amount: 90.00},
+			{LedgerName: "Input Sgst @9%", Amount: 90.00},
+		},
+		InventoryItems: []InventoryItem{
+			{StockItem: "Widget B", Quantity: 5, Rate: 200, Amount: 1000, UOM: "Nos"},
+		},
+		TotalAmount: 1180.00,
+		RemoteID:    "r-acct",
+	}
+
+	xml, err := ToXML(def)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should have VCHTYPE=Purchase
+	if !strings.Contains(xml, `VCHTYPE="Purchase"`) {
+		t.Error("expected VCHTYPE=Purchase for accounting_invoice mode")
+	}
+	if !strings.Contains(xml, "<ISINVOICE>Yes</ISINVOICE>") {
+		t.Error("expected ISINVOICE=Yes for accounting_invoice mode")
+	}
+
+	// Should NOT have inventory entries (accounting_invoice omits inventory)
+	if strings.Contains(xml, "ALLINVENTORYENTRIES.LIST") {
+		t.Error("expected no ALLINVENTORYENTRIES.LIST for accounting_invoice mode")
+	}
+
+	// Should have tax entries
+	if !strings.Contains(xml, "Input Cgst @9%") {
+		t.Error("expected tax entries for accounting_invoice mode")
+	}
+}
+
+func TestToXML_DefaultModeIsAccountingInvoice(t *testing.T) {
+	def := &VoucherDef{
+		VoucherType:    "Purchase",
+		VoucherDate:    "2024-01-01",
+		PartyLedger:    "Test Vendor",
+		PurchaseLedger: "Purchase",
+		TotalAmount:    100,
+		RemoteID:       "r-default",
+	}
+
+	xml, err := ToXML(def)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Default (empty VoucherMode) should behave as accounting_invoice
+	if !strings.Contains(xml, `VCHTYPE="Purchase"`) {
+		t.Error("expected VCHTYPE=Purchase for default mode")
+	}
+	if !strings.Contains(xml, "<ISINVOICE>Yes</ISINVOICE>") {
+		t.Error("expected ISINVOICE=Yes for default mode")
+	}
+	if strings.Contains(xml, "ALLINVENTORYENTRIES.LIST") {
+		t.Error("expected no ALLINVENTORYENTRIES.LIST for default mode")
+	}
+}
+
+func TestToXML_JournalMode(t *testing.T) {
+	def := &VoucherDef{
+		VoucherType:    "Journal",
+		VoucherMode:    "journal",
+		VoucherDate:    "2024-07-01",
+		PartyLedger:    "Expense Account",
+		PurchaseLedger: "Cash",
+		TaxEntries: []TaxEntry{
+			{LedgerName: "Input Cgst @9%", Amount: 50.00},
+		},
+		TotalAmount: 550.00,
+		Narration:   "Journal adjustment",
+		RemoteID:    "r-journal",
+	}
+
+	xml, err := ToXML(def)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should have Journal voucher type
+	if !strings.Contains(xml, `VCHTYPE="Journal"`) {
+		t.Error("expected VCHTYPE=Journal for journal mode")
+	}
+	if !strings.Contains(xml, "<VOUCHERTYPENAME>Journal</VOUCHERTYPENAME>") {
+		t.Error("expected VOUCHERTYPENAME=Journal for journal mode")
+	}
+	if !strings.Contains(xml, "<ISINVOICE>No</ISINVOICE>") {
+		t.Error("expected ISINVOICE=No for journal mode")
+	}
+	if !strings.Contains(xml, "<PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>") {
+		t.Error("expected Accounting Voucher View for journal mode")
+	}
+
+	// Should NOT have tax entries
+	if strings.Contains(xml, "Input Cgst @9%") {
+		t.Error("expected no tax entries for journal mode")
+	}
+
+	// Should NOT have inventory entries
+	if strings.Contains(xml, "ALLINVENTORYENTRIES.LIST") {
+		t.Error("expected no ALLINVENTORYENTRIES.LIST for journal mode")
+	}
+
+	// Should have exactly 2 ledger entries (party debit + purchase credit)
+	count := strings.Count(xml, "<ALLLEDGERENTRIES.LIST>")
+	if count != 2 {
+		t.Errorf("expected 2 ALLLEDGERENTRIES.LIST blocks for journal, got %d", count)
+	}
+
+	// In journal mode, purchase amount should equal total (taxes suppressed),
+	// so debit == credit == 550.00.
+	purchaseBlock := extractBlock(xml, "ALLLEDGERENTRIES.LIST", 1)
+	if !strings.Contains(purchaseBlock, "<AMOUNT>-550.00</AMOUNT>") {
+		t.Errorf("journal purchase amount should be -550.00 (full total, no tax subtraction), got block: %s", purchaseBlock)
+	}
+	partyBlock := extractBlock(xml, "ALLLEDGERENTRIES.LIST", 0)
+	if !strings.Contains(partyBlock, "<AMOUNT>550.00</AMOUNT>") {
+		t.Errorf("journal party amount should be 550.00, got block: %s", partyBlock)
+	}
+}
+
+func TestToXML_ReferenceFields(t *testing.T) {
+	def := &VoucherDef{
+		VoucherType:         "Purchase",
+		VoucherDate:         "2024-05-01",
+		PartyLedger:         "Test",
+		PurchaseLedger:      "Purchase",
+		TotalAmount:         100,
+		RemoteID:            "r-ref",
+		SupplierInvoiceNo:   "SUP-123",
+		SupplierInvoiceDate: "2024-04-28",
+	}
+
+	xml, err := ToXML(def)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(xml, "<REFERENCE>SUP-123</REFERENCE>") {
+		t.Error("expected REFERENCE with supplier invoice number")
+	}
+	if !strings.Contains(xml, "<REFERENCEDATE>20240428</REFERENCEDATE>") {
+		t.Error("expected REFERENCEDATE converted to YYYYMMDD format")
+	}
+}
+
+func TestToXML_BillAllocations(t *testing.T) {
+	def := &VoucherDef{
+		VoucherType:       "Purchase",
+		VoucherDate:       "2024-05-01",
+		PartyLedger:       "Test Vendor",
+		PurchaseLedger:    "Purchase",
+		TotalAmount:       5000.00,
+		RemoteID:          "r-bill",
+		SupplierInvoiceNo: "BILL-456",
+	}
+
+	xml, err := ToXML(def)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// BILLALLOCATIONS should be inside the party ledger entry
+	partyBlock := extractBlock(xml, "ALLLEDGERENTRIES.LIST", 0)
+	if !strings.Contains(partyBlock, "<BILLALLOCATIONS.LIST>") {
+		t.Error("expected BILLALLOCATIONS.LIST in party ledger entry")
+	}
+	if !strings.Contains(partyBlock, "<NAME>BILL-456</NAME>") {
+		t.Error("expected bill allocation NAME to match supplier invoice number")
+	}
+	if !strings.Contains(partyBlock, "<BILLTYPE>New Ref</BILLTYPE>") {
+		t.Error("expected BILLTYPE=New Ref")
+	}
+	if !strings.Contains(partyBlock, "<AMOUNT>5000.00</AMOUNT>") {
+		t.Error("expected bill allocation AMOUNT to match total amount")
+	}
+}
+
+func TestToXML_NoBillAllocationsWithoutInvoiceNo(t *testing.T) {
+	def := &VoucherDef{
+		VoucherType:    "Purchase",
+		VoucherDate:    "2024-05-01",
+		PartyLedger:    "Test",
+		PurchaseLedger: "Purchase",
+		TotalAmount:    100,
+		RemoteID:       "r-nobill",
+	}
+
+	xml, err := ToXML(def)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Contains(xml, "BILLALLOCATIONS.LIST") {
+		t.Error("expected no BILLALLOCATIONS.LIST when SupplierInvoiceNo is empty")
+	}
+
+	// REFERENCE and REFERENCEDATE should also be absent when not set (S4)
+	if strings.Contains(xml, "<REFERENCE>") {
+		t.Error("expected no REFERENCE tag when SupplierInvoiceNo is empty")
+	}
+	if strings.Contains(xml, "<REFERENCEDATE>") {
+		t.Error("expected no REFERENCEDATE tag when SupplierInvoiceDate is empty")
 	}
 }
 

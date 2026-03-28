@@ -10,13 +10,14 @@ import (
 
 // ImportResult holds the result of a voucher import into Tally.
 type ImportResult struct {
-	Success    bool
-	Created    int
-	Altered    int
-	Exceptions int
-	LastVchID  string
-	LastMID    string
-	Errors     []string
+	Success         bool
+	Created         int
+	Altered         int
+	Exceptions      int
+	LastVchID       string
+	LastMID         string
+	Errors          []string
+	IsZeroCountOnly bool // true when the only "error" is zero created/altered counts (no LINEERROR or EXCEPTIONS)
 }
 
 // ImportVoucher imports a voucher XML string into Tally.
@@ -139,6 +140,7 @@ func buildResult(created, altered, exceptions, errCount int, lastVchID, lastMID,
 		result.Success = true
 	default:
 		result.Success = false
+		result.IsZeroCountOnly = true
 		result.Errors = []string{fmt.Sprintf(
 			"Tally created 0 and altered 0 records (exceptions=%d, errors=%d, raw: %s)",
 			exceptions, errCount, truncate(string(rawData), 500),

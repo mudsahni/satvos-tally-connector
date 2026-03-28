@@ -1,6 +1,10 @@
 package tally
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/mudsahni/satvos-tally-connector/internal/xmlutil"
+)
 
 // BuildCompanyInfoRequest creates an XML request to get the current company info.
 func BuildCompanyInfoRequest() []byte {
@@ -70,7 +74,7 @@ func BuildVoucherImportRequest(voucherXML, companyName string) []byte {
 </TALLYMESSAGE>
 </DATA>
 </BODY>
-</ENVELOPE>`, companyName, voucherXML))
+</ENVELOPE>`, xmlutil.Escape(companyName), voucherXML))
 }
 
 // BuildMasterImportRequest wraps master XML (ledgers, groups, stock items)
@@ -96,5 +100,5 @@ func BuildMasterImportRequest(masterXML, companyName string) []byte {
 </TALLYMESSAGE>
 </DATA>
 </BODY>
-</ENVELOPE>`, companyName, masterXML))
+</ENVELOPE>`, xmlutil.Escape(companyName), masterXML))
 }

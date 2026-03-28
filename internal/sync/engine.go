@@ -230,9 +230,16 @@ func (e *Engine) processOutbound(ctx context.Context) {
 
 		// Track ledgers that need to exist.
 		if vdef.PartyLedger != "" {
-			ledgerSet[vdef.PartyLedger] = tally.LedgerDef{
+			ld := tally.LedgerDef{
 				Name: vdef.PartyLedger, ParentGroup: "Sundry Creditors",
 			}
+			if vdef.PartyDetails != nil {
+				ld.Address = vdef.PartyDetails.Address
+				ld.PAN = vdef.PartyDetails.PAN
+				ld.GSTIN = vdef.PartyDetails.GSTIN
+				ld.State = vdef.PartyDetails.State
+			}
+			ledgerSet[vdef.PartyLedger] = ld
 		}
 		if vdef.PurchaseLedger != "" {
 			ledgerSet[vdef.PurchaseLedger] = tally.LedgerDef{
