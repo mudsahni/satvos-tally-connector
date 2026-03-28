@@ -102,6 +102,23 @@ The sync engine runs on a timer (`sync.interval_seconds`). Each cycle:
    g. POST /api/v1/sync/v1/ack with results
 ```
 
+## Local UI Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/` | Dashboard — connection status, sync activity, settings, logs |
+| GET | `/setup.html` | Setup wizard — API key input with validation |
+| GET | `/api/status` | Current sync status (JSON) |
+| POST | `/api/sync` | Trigger manual sync (409 if already syncing) |
+| POST | `/api/config` | Save API key (setup mode only) |
+| POST | `/api/validate-key` | Test API key before saving |
+| POST | `/api/reconfigure` | Change API key (validates, stops engine, restarts) |
+| POST | `/api/reset` | Delete config/state, return to setup mode |
+| POST | `/api/pause` | Pause sync engine |
+| POST | `/api/resume` | Resume sync engine |
+| GET | `/api/logs` | Last 200 lines of log file (plain text) |
+| GET | `/health` | Structured healthcheck (JSON) |
+
 ## Cloud API Endpoints Used
 
 | Method | Path | Purpose |
@@ -118,6 +135,13 @@ All requests use `Authorization: Bearer <api_key>`.
 ## Key Conventions
 
 - **Error resilience**: Each master fetch failure is logged but doesn't abort the cycle. Per-item import failures produce failed AckResults; processing continues for remaining items. Ledger pre-creation failures are warnings (voucher imports continue — some may succeed if ledgers already exist)
+- **Smart error classification**: `cloud.ClassifyError()` categorizes errors as `auth`, `network`, `server`, or `unknown` with user-friendly messages. Dashboard shows color-coded banners with contextual action buttons (e.g., "Reconfigure API Key" for auth errors)
+- **Pause/resume**: Engine can be paused/resumed via API. Paused engine skips sync cycles but remains responsive to status queries
+- **Concurrent sync prevention**: `atomic.Bool` guard prevents overlapping sync operations (both ticker-based and manual triggers)
+- **Persistent logging**: Logs written to both stdout and `<stateDir>/logs/connector.log` with rotation (10MB max, 3 backups). Log viewer in dashboard
+- **API key reconfiguration**: API key can be changed at any time via Settings in dashboard. Key is validated before saving. Engine is stopped and restarted with new key
+- **Connection reset**: "Reset Connection" deletes config and state, returns to setup wizard
+- **Sync statistics**: Tracks last sync time, success/fail counts per document. Displayed in dashboard
 - **Voucher modes**: `VoucherMode` field routes to different Tally XML structures. `accounting_invoice` = Purchase type without inventory (service invoices). `item_invoice` = Purchase type with ALLINVENTORYENTRIES. `journal` = Journal type for non-GST expenses. Unknown modes return an error
 - **Rich ledger creation**: Party ledgers created with PAN (INCOMETAXNUMBER), GSTIN (PARTYGSTIN), address (ADDRESS.LIST), TDS applicability (deductee type derived from PAN 4th character: C=Company, F=Firm, T=Trust, H=HUF, P=Individual, A=AOP/BOI), GST registration type (defaults to "Regular")
 - **Supplier invoice reference**: Vouchers include REFERENCE (invoice number) and REFERENCEDATE (invoice date) tags, plus BILLALLOCATIONS.LIST for Tally's bill-wise tracking
@@ -133,7 +157,7 @@ All requests use `Authorization: Bearer <api_key>`.
 
 ## Tech Stack
 
-Go 1.25, Viper (config), testify (testing), x/sync (errgroup), x/sys (Windows SCM). No database, no web framework — standard library `net/http`, `encoding/xml`, `encoding/json`, `text/template`, `embed`.
+Go 1.25, Viper (config), testify (testing), x/sync (errgroup), x/sys (Windows SCM). No database, no web framework — standard library `net/http`, `encoding/xml`, `encoding/json`, `text/template`, `embed`, `sync/atomic`.
 
 ## Important Files for Common Tasks
 
