@@ -22,7 +22,10 @@
         .dot.yellow { background: #eab308; }
         .dot.red { background: #ef4444; }
         .dot.gray { background: #ccc; }
-        .error-banner { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin-bottom: 20px; color: #991b1b; font-size: 14px; display: none; }
+        .error-banner { border-radius: 8px; padding: 16px; margin-bottom: 20px; font-size: 14px; display: none; }
+        .error-banner.error-red { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+        .error-banner.error-yellow { background: #fefce8; border: 1px solid #fef08a; color: #854d0e; }
+        .error-banner a { color: inherit; font-weight: 600; text-decoration: underline; }
         .actions { text-align: center; }
         .btn { background: #1a1a2e; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-size: 14px; cursor: pointer; transition: background 0.2s; }
         .btn:hover { background: #2a2a4e; }
@@ -115,10 +118,35 @@
                     document.getElementById("agent-id").textContent = data.agent_id || "--";
 
                     var banner = document.getElementById("error-banner");
-                    if (data.last_sync_error) {
+                    if (data.error_type) {
+                        banner.className = "error-banner";
+                        var msg = data.error_message || "An unknown error occurred.";
+                        if (data.error_type === "auth") {
+                            banner.classList.add("error-red");
+                            banner.innerHTML = msg + ' <a href="/setup.html">Reconfigure API Key</a>';
+                        } else if (data.error_type === "network") {
+                            banner.classList.add("error-yellow");
+                            banner.innerHTML = msg;
+                        } else if (data.error_type === "tally_down") {
+                            banner.classList.add("error-yellow");
+                            banner.innerHTML = msg;
+                        } else if (data.error_type === "tally_no_company") {
+                            banner.classList.add("error-yellow");
+                            banner.innerHTML = msg;
+                        } else if (data.error_type === "server") {
+                            banner.classList.add("error-yellow");
+                            banner.innerHTML = msg;
+                        } else {
+                            banner.classList.add("error-red");
+                            banner.innerHTML = msg;
+                        }
+                        banner.style.display = "block";
+                    } else if (data.last_sync_error) {
+                        banner.className = "error-banner error-red";
                         banner.textContent = "Last sync error: " + data.last_sync_error;
                         banner.style.display = "block";
                     } else {
+                        banner.className = "error-banner";
                         banner.style.display = "none";
                     }
                 })

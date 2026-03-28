@@ -26,6 +26,10 @@ type Engine struct {
 	version     string
 	stopCh      chan struct{}
 	stopOnce    sync.Once
+
+	lastErrorType    string
+	lastErrorMessage string
+	lastErrorMu      sync.RWMutex
 }
 
 // NewEngine creates a new sync engine.
@@ -79,6 +83,8 @@ type Status struct {
 	TallyError     string `json:"tally_error,omitempty"`
 	AgentID        string `json:"agent_id"`
 	LastSyncError  string `json:"last_sync_error,omitempty"`
+	ErrorType      string `json:"error_type,omitempty"`
+	ErrorMessage   string `json:"error_message,omitempty"`
 }
 
 // GetStatus returns the current sync status for the UI.
@@ -91,6 +97,21 @@ func (e *Engine) GetStatus() Status {
 	} else {
 		company = state.TallyCompany
 	}
+	// Determine error type and message.
+	e.lastErrorMu.RLock()
+	errorType := e.lastErrorType
+	errorMessage := e.lastErrorMessage
+	e.lastErrorMu.RUnlock()
+
+	// Tally-specific error types take priority when relevant.
+	if !reachable {
+		errorType = "tally_down"
+		errorMessage = "Tally Prime is not running. Please start Tally Prime and ensure it is accessible."
+	} else if company == "" {
+		errorType = "tally_no_company"
+		errorMessage = "Tally is running but no company is open. Please open a company in Tally Prime."
+	}
+
 	return Status{
 		TallyConnected: reachable && company != "",
 		TallyReachable: reachable,
@@ -98,7 +119,26 @@ func (e *Engine) GetStatus() Status {
 		TallyPort:      state.TallyPort,
 		TallyError:     errMsg,
 		AgentID:        state.AgentID,
+		ErrorType:      errorType,
+		ErrorMessage:   errorMessage,
 	}
+}
+
+func (e *Engine) setLastError(err error) {
+	e.lastErrorMu.Lock()
+	defer e.lastErrorMu.Unlock()
+	if err == nil {
+		e.lastErrorType = ""
+		e.lastErrorMessage = ""
+		return
+	}
+	classified := cloud.ClassifyError(err)
+	e.lastErrorType = string(classified.Type)
+	e.lastErrorMessage = classified.Message
+}
+
+func (e *Engine) clearLastError() {
+	e.setLastError(nil)
 }
 
 func (e *Engine) runCycle(ctx context.Context) {
@@ -115,6 +155,7 @@ func (e *Engine) runCycle(ctx context.Context) {
 		Version:        e.version,
 	}); err != nil {
 		log.Printf("[sync] heartbeat failed: %v", err)
+		e.setLastError(err)
 	}
 
 	if !tallyAvailable {
@@ -135,6 +176,7 @@ func (e *Engine) runCycle(ctx context.Context) {
 	// 3. Pull outbound (SATVOS -> Tally)
 	e.processOutbound(ctx)
 
+	e.clearLastError()
 	log.Println("[sync] sync cycle complete")
 }
 
