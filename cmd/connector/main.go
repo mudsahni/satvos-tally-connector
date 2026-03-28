@@ -136,7 +136,7 @@ func runSetupMode(cfg *config.Config, stateDir string) error {
 
 	startEngine := makeStartEngine(stateDir, ctx)
 
-	uiServer := ui.NewServer(cfg.UI.Port, nil, stateDir, cfg, startEngine, nil)
+	uiServer := ui.NewServer(cfg.UI.Port, nil, stateDir, cfg, startEngine, nil, version)
 
 	setupURL := fmt.Sprintf("http://localhost:%d/setup.html", cfg.UI.Port)
 	log.Printf("Opening setup wizard: %s", setupURL)
@@ -199,7 +199,7 @@ func runNormalMode(cfg *config.Config, stateDir string) error {
 	// Create sync engine and UI (startEngine callback needed for reconfiguration)
 	engine := engsync.NewEngine(cfg, cloudClient, tallyClient, localStore, version)
 	startEngine := makeStartEngine(stateDir, ctx)
-	uiServer := ui.NewServer(cfg.UI.Port, engine, stateDir, cfg, startEngine, localStore)
+	uiServer := ui.NewServer(cfg.UI.Port, engine, stateDir, cfg, startEngine, localStore, version)
 	defer cancel()
 
 	g, gctx := errgroup.WithContext(ctx)

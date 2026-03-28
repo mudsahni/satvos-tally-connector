@@ -326,6 +326,37 @@ func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+
+	resp := map[string]interface{}{
+		"status":  "healthy",
+		"version": s.version,
+	}
+
+	engine := s.getEngine()
+	if engine == nil {
+		resp["status"] = "setup_required"
+		resp["engine_running"] = false
+	} else {
+		status := engine.GetStatus()
+		resp["engine_running"] = true
+		resp["tally_connected"] = status.TallyConnected
+		resp["cloud_connected"] = status.ErrorType != "auth" && status.ErrorType != "network"
+		resp["paused"] = status.IsPaused
+		resp["is_syncing"] = status.IsSyncing
+		if status.LastSyncAt != "" {
+			resp["last_sync_at"] = status.LastSyncAt
+		}
+	}
+
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
