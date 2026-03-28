@@ -15,6 +15,7 @@ import (
 
 	"github.com/mudsahni/satvos-tally-connector/internal/cloud"
 	"github.com/mudsahni/satvos-tally-connector/internal/config"
+	"github.com/mudsahni/satvos-tally-connector/internal/logging"
 	"github.com/mudsahni/satvos-tally-connector/internal/store"
 	"github.com/mudsahni/satvos-tally-connector/internal/svc"
 	engsync "github.com/mudsahni/satvos-tally-connector/internal/sync"
@@ -22,7 +23,7 @@ import (
 	"github.com/mudsahni/satvos-tally-connector/internal/ui"
 )
 
-const version = "0.2.2"
+const version = "0.3.0"
 
 func main() {
 	if svc.IsWindowsService() {
@@ -40,6 +41,17 @@ func main() {
 }
 
 func run() error {
+	stateDir := stateDirectory()
+
+	// Setup persistent logging (file + stdout) before anything else.
+	cleanup, err := logging.Setup(stateDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WARNING: could not setup file logging: %v\n", err)
+		// Continue without file logging — stdout still works.
+	} else {
+		defer cleanup()
+	}
+
 	log.Printf("SATVOS Tally Connector v%s (build: xml-sanitize+post-outbound) starting...", version)
 
 	// 1. Load config
@@ -47,8 +59,6 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-
-	stateDir := stateDirectory()
 
 	// 2. Setup mode — no API key configured yet
 	if cfg.NeedsSetup() {
@@ -59,20 +69,10 @@ func run() error {
 	return runNormalMode(cfg, stateDir)
 }
 
-// runSetupMode starts only the UI server so the user can enter their API key
-// via the setup wizard at http://localhost:<port>/setup.html.
-// When the user saves a valid API key, the startEngine callback initializes and
-// starts the sync engine inline — no restart required.
-func runSetupMode(cfg *config.Config, stateDir string) error {
-	log.Println("No API key configured — starting in setup mode")
-
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-
-	// The startEngine callback is invoked by the UI handler when the user saves
-	// an API key. It wires up the full sync infrastructure and returns a ready
-	// engine (not yet started — the handler starts it in a goroutine).
-	startEngine := func(apiKey string) (*engsync.Engine, error) {
+// makeStartEngine returns a StartEngineFunc that creates a fully wired sync engine.
+// It is used both in setup mode and normal mode (for reconfiguration).
+func makeStartEngine(stateDir string, ctx context.Context) ui.StartEngineFunc {
+	return func(apiKey string) (*engsync.Engine, error) {
 		// Reload config so it picks up the newly-written connector.yaml.
 		newCfg, err := config.Load()
 		if err != nil {
@@ -122,8 +122,21 @@ func runSetupMode(cfg *config.Config, stateDir string) error {
 		log.Printf("Sync engine initialized (interval: %ds)", newCfg.Sync.IntervalSeconds)
 		return engine, nil
 	}
+}
 
-	uiServer := ui.NewServer(cfg.UI.Port, nil, stateDir, startEngine)
+// runSetupMode starts only the UI server so the user can enter their API key
+// via the setup wizard at http://localhost:<port>/setup.html.
+// When the user saves a valid API key, the startEngine callback initializes and
+// starts the sync engine inline — no restart required.
+func runSetupMode(cfg *config.Config, stateDir string) error {
+	log.Println("No API key configured — starting in setup mode")
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	startEngine := makeStartEngine(stateDir, ctx)
+
+	uiServer := ui.NewServer(cfg.UI.Port, nil, stateDir, cfg, startEngine, nil, version)
 
 	setupURL := fmt.Sprintf("http://localhost:%d/setup.html", cfg.UI.Port)
 	log.Printf("Opening setup wizard: %s", setupURL)
@@ -180,12 +193,13 @@ func runNormalMode(cfg *config.Config, stateDir string) error {
 		_ = localStore.Update(func(s *store.State) { s.AgentID = resp.ID })
 	}
 
-	// Create sync engine and UI (no startEngine callback needed — engine already running)
-	engine := engsync.NewEngine(cfg, cloudClient, tallyClient, localStore, version)
-	uiServer := ui.NewServer(cfg.UI.Port, engine, stateDir, nil)
-
 	// Graceful shutdown
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
+	// Create sync engine and UI (startEngine callback needed for reconfiguration)
+	engine := engsync.NewEngine(cfg, cloudClient, tallyClient, localStore, version)
+	startEngine := makeStartEngine(stateDir, ctx)
+	uiServer := ui.NewServer(cfg.UI.Port, engine, stateDir, cfg, startEngine, localStore, version)
 	defer cancel()
 
 	g, gctx := errgroup.WithContext(ctx)

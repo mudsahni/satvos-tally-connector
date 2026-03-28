@@ -22,11 +22,20 @@
         .dot.yellow { background: #eab308; }
         .dot.red { background: #ef4444; }
         .dot.gray { background: #ccc; }
-        .error-banner { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin-bottom: 20px; color: #991b1b; font-size: 14px; display: none; }
+        .error-banner { border-radius: 8px; padding: 16px; margin-bottom: 20px; font-size: 14px; display: none; }
+        .error-banner.error-red { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+        .error-banner.error-yellow { background: #fefce8; border: 1px solid #fef08a; color: #854d0e; }
+        .error-banner a { color: inherit; font-weight: 600; text-decoration: underline; }
         .actions { text-align: center; }
         .btn { background: #1a1a2e; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-size: 14px; cursor: pointer; transition: background 0.2s; }
         .btn:hover { background: #2a2a4e; }
         .btn:disabled { background: #999; cursor: not-allowed; }
+        .btn-yellow { background: #eab308; }
+        .btn-yellow:hover { background: #ca8a04; }
+        .btn-green { background: #22c55e; }
+        .btn-green:hover { background: #16a34a; }
+        .btn-group { display: flex; gap: 8px; justify-content: center; }
+        .paused-bar { background: #fefce8; border: 1px solid #fef08a; color: #854d0e; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 14px; text-align: center; display: none; }
         #sync-feedback { font-size: 13px; color: #22c55e; margin-top: 8px; min-height: 20px; }
         a.nav-link { color: #aaa; font-size: 13px; text-decoration: none; margin-left: 16px; }
         a.nav-link:hover { color: #fff; }
@@ -81,9 +90,54 @@
             </div>
         </div>
 
+        <div class="card">
+            <h2>Sync Activity</h2>
+            <div class="status-row">
+                <span class="status-label">Last Synced</span>
+                <span class="status-value" id="last-sync">--</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Documents Synced</span>
+                <span class="status-value" id="sync-counts">--</span>
+            </div>
+        </div>
+
+        <div class="paused-bar" id="paused-bar">Sync is paused</div>
+
         <div class="card actions">
-            <button class="btn" id="sync-btn" onclick="triggerSync()">Sync Now</button>
+            <div class="btn-group">
+                <button class="btn" id="sync-btn" onclick="triggerSync()">Sync Now</button>
+                <button class="btn btn-yellow" id="pause-btn" onclick="togglePause()">Pause</button>
+            </div>
             <div id="sync-feedback"></div>
+        </div>
+
+        <div class="card">
+            <h2 onclick="toggleSettings()" style="cursor:pointer; user-select:none;">Settings <span id="settings-toggle">&#9654;</span></h2>
+            <div id="settings-body" style="display:none;">
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size:14px; color:#666; display:block; margin-bottom:6px;">API Key</label>
+                    <input type="text" id="new-api-key" placeholder="sk_..." style="width:100%; padding:8px 12px; border:1px solid #ddd; border-radius:6px; font-size:14px; box-sizing:border-box;">
+                </div>
+                <button class="btn" id="reconfig-btn" onclick="updateAPIKey()">Update API Key</button>
+                <div id="reconfig-feedback" style="font-size:13px; margin-top:8px; min-height:20px;"></div>
+
+                <hr style="margin: 20px 0; border: none; border-top: 1px solid #f0f0f0;">
+                <button class="btn" id="reset-btn" onclick="resetConnection()" style="background:#ef4444;">Reset Connection</button>
+                <div id="reset-feedback" style="font-size:13px; margin-top:8px; min-height:20px;"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <details id="logs-details">
+                <summary style="cursor:pointer; user-select:none; font-size:15px; font-weight:600; color:#555; text-transform:uppercase; letter-spacing:0.5px;">Logs</summary>
+                <div style="margin-top:16px;">
+                    <button class="btn" onclick="loadLogs()" style="margin-bottom:12px;">Refresh Logs</button>
+                    <div style="max-height:400px; overflow-y:auto; background:#1a1a2e; border-radius:6px; padding:12px;">
+                        <pre id="log-content" style="margin:0; font-family:monospace; font-size:12px; color:#ddd; white-space:pre-wrap; word-wrap:break-word;">Click "Refresh Logs" to load.</pre>
+                    </div>
+                </div>
+            </details>
         </div>
     </div>
 
@@ -114,11 +168,71 @@
                     document.getElementById("tally-port").textContent = data.tally_port || "--";
                     document.getElementById("agent-id").textContent = data.agent_id || "--";
 
+                    // Sync activity
+                    if (data.last_sync_at) {
+                        var syncDate = new Date(data.last_sync_at);
+                        var now = new Date();
+                        var diffMs = now - syncDate;
+                        var diffMins = Math.floor(diffMs / 60000);
+                        if (diffMins < 1) {
+                            document.getElementById("last-sync").textContent = "Just now";
+                        } else if (diffMins < 60) {
+                            document.getElementById("last-sync").textContent = diffMins + " minute" + (diffMins === 1 ? "" : "s") + " ago";
+                        } else {
+                            var diffHrs = Math.floor(diffMins / 60);
+                            document.getElementById("last-sync").textContent = diffHrs + " hour" + (diffHrs === 1 ? "" : "s") + " ago";
+                        }
+                    } else {
+                        document.getElementById("last-sync").textContent = "Never";
+                    }
+                    document.getElementById("sync-counts").textContent = (data.sync_success_count || 0) + " success / " + (data.sync_fail_count || 0) + " failed";
+
+                    // Pause/resume state
+                    var pauseBtn = document.getElementById("pause-btn");
+                    var syncBtn = document.getElementById("sync-btn");
+                    var pausedBar = document.getElementById("paused-bar");
+                    if (data.is_paused) {
+                        pauseBtn.textContent = "Resume";
+                        pauseBtn.className = "btn btn-green";
+                        syncBtn.disabled = true;
+                        pausedBar.style.display = "block";
+                    } else {
+                        pauseBtn.textContent = "Pause";
+                        pauseBtn.className = "btn btn-yellow";
+                        syncBtn.disabled = false;
+                        pausedBar.style.display = "none";
+                    }
+
                     var banner = document.getElementById("error-banner");
-                    if (data.last_sync_error) {
+                    if (data.error_type) {
+                        banner.className = "error-banner";
+                        var msg = data.error_message || "An unknown error occurred.";
+                        if (data.error_type === "auth") {
+                            banner.classList.add("error-red");
+                            banner.innerHTML = msg + ' <a href="/setup.html">Reconfigure API Key</a>';
+                        } else if (data.error_type === "network") {
+                            banner.classList.add("error-yellow");
+                            banner.innerHTML = msg;
+                        } else if (data.error_type === "tally_down") {
+                            banner.classList.add("error-yellow");
+                            banner.innerHTML = msg;
+                        } else if (data.error_type === "tally_no_company") {
+                            banner.classList.add("error-yellow");
+                            banner.innerHTML = msg;
+                        } else if (data.error_type === "server") {
+                            banner.classList.add("error-yellow");
+                            banner.innerHTML = msg;
+                        } else {
+                            banner.classList.add("error-red");
+                            banner.innerHTML = msg;
+                        }
+                        banner.style.display = "block";
+                    } else if (data.last_sync_error) {
+                        banner.className = "error-banner error-red";
                         banner.textContent = "Last sync error: " + data.last_sync_error;
                         banner.style.display = "block";
                     } else {
+                        banner.className = "error-banner";
                         banner.style.display = "none";
                     }
                 })
@@ -148,6 +262,113 @@
                 })
                 .finally(function() {
                     btn.disabled = false;
+                });
+        }
+
+        function togglePause() {
+            var pauseBtn = document.getElementById("pause-btn");
+            var isPaused = pauseBtn.textContent === "Resume";
+            var endpoint = isPaused ? "/api/resume" : "/api/pause";
+            pauseBtn.disabled = true;
+
+            fetch(endpoint, { method: "POST" })
+            .then(function(r) { return r.json(); })
+            .then(function() { updateStatus(); })
+            .catch(function() {
+                var fb = document.getElementById("sync-feedback");
+                fb.textContent = "Failed to " + (isPaused ? "resume" : "pause") + " sync";
+                fb.style.color = "#ef4444";
+                setTimeout(function() { fb.textContent = ""; }, 3000);
+            })
+            .finally(function() { pauseBtn.disabled = false; });
+        }
+
+        function toggleSettings() {
+            var body = document.getElementById("settings-body");
+            var toggle = document.getElementById("settings-toggle");
+            if (body.style.display === "none") {
+                body.style.display = "block";
+                toggle.innerHTML = "&#9660;";
+            } else {
+                body.style.display = "none";
+                toggle.innerHTML = "&#9654;";
+            }
+        }
+
+        function updateAPIKey() {
+            var btn = document.getElementById("reconfig-btn");
+            var fb = document.getElementById("reconfig-feedback");
+            var keyInput = document.getElementById("new-api-key");
+            var newKey = keyInput.value.trim();
+            if (!newKey) { fb.textContent = "Please enter an API key"; fb.style.color = "#ef4444"; return; }
+            btn.disabled = true;
+            fb.textContent = "Validating and updating...";
+            fb.style.color = "#666";
+
+            fetch("/api/reconfigure", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({new_api_key: newKey})
+            })
+            .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+            .then(function(res) {
+                if (res.data.error) {
+                    fb.textContent = res.data.error;
+                    fb.style.color = "#ef4444";
+                } else {
+                    fb.textContent = res.data.message || "API key updated successfully";
+                    fb.style.color = "#22c55e";
+                    keyInput.value = "";
+                    setTimeout(function() { fb.textContent = ""; }, 5000);
+                }
+            })
+            .catch(function() {
+                fb.textContent = "Failed to update API key";
+                fb.style.color = "#ef4444";
+            })
+            .finally(function() { btn.disabled = false; });
+        }
+
+        function resetConnection() {
+            if (!confirm("Are you sure? This will delete your configuration and all local state. The connector will return to setup mode.")) {
+                return;
+            }
+            var btn = document.getElementById("reset-btn");
+            var fb = document.getElementById("reset-feedback");
+            btn.disabled = true;
+            fb.textContent = "Resetting...";
+            fb.style.color = "#666";
+
+            fetch("/api/reset", { method: "POST" })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    fb.textContent = data.error;
+                    fb.style.color = "#ef4444";
+                    btn.disabled = false;
+                } else {
+                    fb.textContent = data.message || "Connection reset.";
+                    fb.style.color = "#22c55e";
+                    setTimeout(function() { window.location.href = "/setup.html"; }, 1500);
+                }
+            })
+            .catch(function() {
+                fb.textContent = "Failed to reset connection";
+                fb.style.color = "#ef4444";
+                btn.disabled = false;
+            });
+        }
+
+        function loadLogs() {
+            fetch("/api/logs")
+                .then(function(r) { return r.text(); })
+                .then(function(text) {
+                    var logEl = document.getElementById("log-content");
+                    logEl.textContent = text;
+                    logEl.scrollTop = logEl.scrollHeight;
+                })
+                .catch(function() {
+                    document.getElementById("log-content").textContent = "Failed to load logs.";
                 });
         }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mudsahni/satvos-tally-connector/internal/cloud"
@@ -26,6 +27,18 @@ type Engine struct {
 	version     string
 	stopCh      chan struct{}
 	stopOnce    sync.Once
+
+	lastErrorType    string
+	lastErrorMessage string
+	lastErrorMu      sync.RWMutex
+
+	lastSyncAt       time.Time
+	syncSuccessCount int
+	syncFailCount    int
+	syncStatsMu      sync.RWMutex
+
+	paused  atomic.Bool
+	syncing atomic.Bool
 }
 
 // NewEngine creates a new sync engine.
@@ -46,7 +59,10 @@ func (e *Engine) Start(ctx context.Context) error {
 	ticker := time.NewTicker(time.Duration(e.cfg.Sync.IntervalSeconds) * time.Second)
 	defer ticker.Stop()
 
-	e.runCycle(ctx)
+	if e.syncing.CompareAndSwap(false, true) {
+		e.runCycle(ctx)
+		e.syncing.Store(false)
+	}
 
 	for {
 		select {
@@ -55,7 +71,10 @@ func (e *Engine) Start(ctx context.Context) error {
 		case <-e.stopCh:
 			return nil
 		case <-ticker.C:
-			e.runCycle(ctx)
+			if e.syncing.CompareAndSwap(false, true) {
+				e.runCycle(ctx)
+				e.syncing.Store(false)
+			}
 		}
 	}
 }
@@ -65,20 +84,51 @@ func (e *Engine) Stop() {
 	e.stopOnce.Do(func() { close(e.stopCh) })
 }
 
-// TriggerSync runs a single sync cycle immediately (used by the UI).
-func (e *Engine) TriggerSync(ctx context.Context) {
-	e.runCycle(ctx)
+// Pause pauses the sync engine so cycles are skipped.
+func (e *Engine) Pause() {
+	e.paused.Store(true)
+	log.Println("[sync] paused by user")
 }
+
+// Resume resumes the sync engine after a pause.
+func (e *Engine) Resume() {
+	e.paused.Store(false)
+	log.Println("[sync] resumed by user")
+}
+
+// IsPaused returns whether the engine is paused.
+func (e *Engine) IsPaused() bool { return e.paused.Load() }
+
+// TriggerSync runs a single sync cycle immediately (used by the UI).
+// It returns false if a sync is already in progress.
+func (e *Engine) TriggerSync(ctx context.Context) bool {
+	if !e.syncing.CompareAndSwap(false, true) {
+		return false
+	}
+	defer e.syncing.Store(false)
+	e.runCycle(ctx)
+	return true
+}
+
+// IsSyncing returns whether a sync cycle is currently running.
+func (e *Engine) IsSyncing() bool { return e.syncing.Load() }
 
 // Status holds the current sync status for the UI.
 type Status struct {
-	TallyConnected bool   `json:"tally_connected"`
-	TallyReachable bool   `json:"tally_reachable"`
-	TallyCompany   string `json:"tally_company"`
-	TallyPort      int    `json:"tally_port"`
-	TallyError     string `json:"tally_error,omitempty"`
-	AgentID        string `json:"agent_id"`
-	LastSyncError  string `json:"last_sync_error,omitempty"`
+	TallyConnected   bool   `json:"tally_connected"`
+	TallyReachable   bool   `json:"tally_reachable"`
+	TallyCompany     string `json:"tally_company"`
+	TallyPort        int    `json:"tally_port"`
+	TallyError       string `json:"tally_error,omitempty"`
+	AgentID          string `json:"agent_id"`
+	LastSyncError    string `json:"last_sync_error,omitempty"`
+	ErrorType        string `json:"error_type,omitempty"`
+	ErrorMessage     string `json:"error_message,omitempty"`
+	LastSyncAt       string `json:"last_sync_at,omitempty"`
+	SyncSuccessCount int    `json:"sync_success_count"`
+	SyncFailCount    int    `json:"sync_fail_count"`
+	IsPaused         bool   `json:"is_paused"`
+	IsSyncing        bool   `json:"is_syncing"`
 }
 
 // GetStatus returns the current sync status for the UI.
@@ -91,17 +141,71 @@ func (e *Engine) GetStatus() Status {
 	} else {
 		company = state.TallyCompany
 	}
+	// Determine error type and message.
+	e.lastErrorMu.RLock()
+	errorType := e.lastErrorType
+	errorMessage := e.lastErrorMessage
+	e.lastErrorMu.RUnlock()
+
+	// Tally-specific error types take priority when relevant.
+	if !reachable {
+		errorType = "tally_down"
+		errorMessage = "Tally Prime is not running. Please start Tally Prime and ensure it is accessible."
+	} else if company == "" {
+		errorType = "tally_no_company"
+		errorMessage = "Tally is running but no company is open. Please open a company in Tally Prime."
+	}
+
+	e.syncStatsMu.RLock()
+	lastSyncAt := e.lastSyncAt
+	syncSuccess := e.syncSuccessCount
+	syncFail := e.syncFailCount
+	e.syncStatsMu.RUnlock()
+
+	var lastSyncAtStr string
+	if !lastSyncAt.IsZero() {
+		lastSyncAtStr = lastSyncAt.Format(time.RFC3339)
+	}
+
 	return Status{
-		TallyConnected: reachable && company != "",
-		TallyReachable: reachable,
-		TallyCompany:   company,
-		TallyPort:      state.TallyPort,
-		TallyError:     errMsg,
-		AgentID:        state.AgentID,
+		TallyConnected:   reachable && company != "",
+		TallyReachable:   reachable,
+		TallyCompany:     company,
+		TallyPort:        state.TallyPort,
+		TallyError:       errMsg,
+		AgentID:          state.AgentID,
+		ErrorType:        errorType,
+		ErrorMessage:     errorMessage,
+		LastSyncAt:       lastSyncAtStr,
+		SyncSuccessCount: syncSuccess,
+		SyncFailCount:    syncFail,
+		IsPaused:         e.IsPaused(),
+		IsSyncing:        e.IsSyncing(),
 	}
 }
 
+func (e *Engine) setLastError(err error) {
+	e.lastErrorMu.Lock()
+	defer e.lastErrorMu.Unlock()
+	if err == nil {
+		e.lastErrorType = ""
+		e.lastErrorMessage = ""
+		return
+	}
+	classified := cloud.ClassifyError(err)
+	e.lastErrorType = string(classified.Type)
+	e.lastErrorMessage = classified.Message
+}
+
+func (e *Engine) clearLastError() {
+	e.setLastError(nil)
+}
+
 func (e *Engine) runCycle(ctx context.Context) {
+	if e.paused.Load() {
+		log.Println("[sync] skipping cycle (paused)")
+		return
+	}
 	log.Println("[sync] starting sync cycle")
 
 	tallyAvailable := e.tallyClient.IsAvailable(ctx)
@@ -115,6 +219,7 @@ func (e *Engine) runCycle(ctx context.Context) {
 		Version:        e.version,
 	}); err != nil {
 		log.Printf("[sync] heartbeat failed: %v", err)
+		e.setLastError(err)
 	}
 
 	if !tallyAvailable {
@@ -133,8 +238,15 @@ func (e *Engine) runCycle(ctx context.Context) {
 	e.pushMasters(ctx)
 
 	// 3. Pull outbound (SATVOS -> Tally)
-	e.processOutbound(ctx)
+	successes, failures := e.processOutbound(ctx)
 
+	e.syncStatsMu.Lock()
+	e.lastSyncAt = time.Now()
+	e.syncSuccessCount += successes
+	e.syncFailCount += failures
+	e.syncStatsMu.Unlock()
+
+	e.clearLastError()
 	log.Println("[sync] sync cycle complete")
 }
 
@@ -192,19 +304,19 @@ func (e *Engine) pushMasters(ctx context.Context) {
 	}
 }
 
-func (e *Engine) processOutbound(ctx context.Context) {
+func (e *Engine) processOutbound(ctx context.Context) (successes, failures int) {
 	state := e.store.Get()
 	companyName := state.TallyCompany
 
 	resp, err := e.cloudClient.PullOutbound(ctx, state.OutboundCursor, e.cfg.Sync.BatchSize)
 	if err != nil {
 		log.Printf("[sync] failed to pull outbound: %v", err)
-		return
+		return 0, 0
 	}
 
 	log.Printf("[sync] outbound: received %d items", len(resp.Items))
 	if len(resp.Items) == 0 {
-		return
+		return 0, 0
 	}
 
 	// Collect all unique ledgers referenced across all vouchers so we can
@@ -337,4 +449,14 @@ func (e *Engine) processOutbound(ctx context.Context) {
 			log.Printf("[sync] failed to send ACKs: %v", err)
 		}
 	}
+
+	// Count successes and failures
+	for _, ack := range ackResults {
+		if ack.Success {
+			successes++
+		} else {
+			failures++
+		}
+	}
+	return successes, failures
 }

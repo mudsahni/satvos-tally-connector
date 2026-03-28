@@ -39,6 +39,12 @@
         .header-row { display: flex; justify-content: space-between; align-items: center; }
         .success-card { background: #f0fdf4; border: 1px solid #bbf7d0; display: none; }
         .success-card p { font-size: 14px; color: #166534; line-height: 1.6; }
+        .btn-outline { background: transparent; color: #1a1a2e; border: 1px solid #1a1a2e; padding: 10px 24px; border-radius: 6px; font-size: 14px; cursor: pointer; transition: background 0.2s, color 0.2s; }
+        .btn-outline:hover { background: #1a1a2e; color: #fff; }
+        .btn-outline:disabled { border-color: #999; color: #999; cursor: not-allowed; background: transparent; }
+        #validate-feedback { font-size: 13px; margin-top: 8px; min-height: 20px; }
+        .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #ccc; border-top-color: #1a1a2e; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 6px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -94,11 +100,13 @@
             <div class="card">
                 <h2>Save Configuration</h2>
                 <p style="font-size:14px;color:#666;margin-bottom:16px;">
-                    Enter your API key above, then click Save to configure the connector.
+                    Enter your API key above, then click "Test Key" to validate it before saving.
                 </p>
                 <div class="btn-row">
-                    <button class="btn" id="save-btn" onclick="saveConfig()">Save &amp; Configure</button>
+                    <button class="btn-outline" id="test-btn" onclick="validateKey()">Test Key</button>
+                    <button class="btn" id="save-btn" onclick="saveConfig()" disabled>Save &amp; Configure</button>
                 </div>
+                <div id="validate-feedback"></div>
                 <div id="save-feedback"></div>
             </div>
         </div>
@@ -134,14 +142,79 @@
                 });
         }
 
+        var keyValidated = false;
+
+        // Reset validation state when the key input changes
+        document.getElementById("api-key").addEventListener("input", function() {
+            keyValidated = false;
+            document.getElementById("save-btn").disabled = true;
+            var vfb = document.getElementById("validate-feedback");
+            vfb.textContent = "";
+            vfb.className = "";
+        });
+
+        function validateKey() {
+            var apiKey = document.getElementById("api-key").value.trim();
+            var testBtn = document.getElementById("test-btn");
+            var saveBtn = document.getElementById("save-btn");
+            var vfb = document.getElementById("validate-feedback");
+
+            if (!apiKey) {
+                vfb.textContent = "Please enter your API key.";
+                vfb.className = "feedback-err";
+                return;
+            }
+
+            testBtn.disabled = true;
+            saveBtn.disabled = true;
+            keyValidated = false;
+            vfb.innerHTML = '<span class="spinner"></span>Validating API key...';
+            vfb.className = "";
+
+            fetch("/api/validate-key", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ api_key: apiKey })
+            })
+                .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+                .then(function(result) {
+                    testBtn.disabled = false;
+                    if (result.data.valid === true) {
+                        vfb.textContent = "API key is valid.";
+                        vfb.className = "feedback-ok";
+                        keyValidated = true;
+                        saveBtn.disabled = false;
+                    } else {
+                        vfb.textContent = result.data.error || "API key is invalid.";
+                        vfb.className = "feedback-err";
+                        keyValidated = false;
+                        saveBtn.disabled = true;
+                    }
+                })
+                .catch(function() {
+                    testBtn.disabled = false;
+                    vfb.textContent = "Connection error. Is the connector still running?";
+                    vfb.className = "feedback-err";
+                    keyValidated = false;
+                    saveBtn.disabled = true;
+                });
+        }
+
         function saveConfig() {
             var apiKey = document.getElementById("api-key").value.trim();
             var btn = document.getElementById("save-btn");
             var fb = document.getElementById("save-feedback");
+            var vfb = document.getElementById("validate-feedback");
 
             if (!apiKey) {
                 fb.textContent = "Please enter your API key.";
                 fb.className = "feedback-err";
+                return;
+            }
+
+            if (!keyValidated) {
+                vfb.textContent = "Please test your API key first.";
+                vfb.className = "feedback-err";
                 return;
             }
 

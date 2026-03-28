@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mudsahni/satvos-tally-connector/internal/config"
+	"github.com/mudsahni/satvos-tally-connector/internal/store"
 	engsync "github.com/mudsahni/satvos-tally-connector/internal/sync"
 )
 
@@ -25,7 +27,10 @@ type StartEngineFunc func(apiKey string) (*engsync.Engine, error)
 type Server struct {
 	port        int
 	stateDir    string
+	cfg         *config.Config
+	version     string
 	startEngine StartEngineFunc // called once after setup saves an API key
+	store       *store.LocalStore
 	server      *http.Server
 
 	mu     sync.RWMutex
@@ -37,12 +42,16 @@ type Server struct {
 // engine may be nil if the connector is in setup mode (no API key configured).
 // startEngine is called when the user saves config via the setup wizard; it may be nil
 // if the engine is already running.
-func NewServer(port int, engine *engsync.Engine, stateDir string, startEngine StartEngineFunc) *Server {
+// localStore may be nil in setup mode (created later by startEngine).
+func NewServer(port int, engine *engsync.Engine, stateDir string, cfg *config.Config, startEngine StartEngineFunc, localStore *store.LocalStore, version string) *Server {
 	return &Server{
 		port:        port,
 		engine:      engine,
 		stateDir:    stateDir,
+		cfg:         cfg,
+		version:     version,
 		startEngine: startEngine,
+		store:       localStore,
 	}
 }
 
@@ -64,6 +73,13 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/sync", s.handleTriggerSync)
 	mux.HandleFunc("/api/config", s.handleSaveConfig)
+	mux.HandleFunc("/api/validate-key", s.handleValidateKey)
+	mux.HandleFunc("/api/logs", s.handleLogs)
+	mux.HandleFunc("/api/reconfigure", s.handleReconfigure)
+	mux.HandleFunc("/api/reset", s.handleReset)
+	mux.HandleFunc("/api/pause", s.handlePause)
+	mux.HandleFunc("/api/resume", s.handleResume)
+	mux.HandleFunc("/health", s.handleHealth)
 
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf("127.0.0.1:%d", s.port),
