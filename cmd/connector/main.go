@@ -69,20 +69,10 @@ func run() error {
 	return runNormalMode(cfg, stateDir)
 }
 
-// runSetupMode starts only the UI server so the user can enter their API key
-// via the setup wizard at http://localhost:<port>/setup.html.
-// When the user saves a valid API key, the startEngine callback initializes and
-// starts the sync engine inline — no restart required.
-func runSetupMode(cfg *config.Config, stateDir string) error {
-	log.Println("No API key configured — starting in setup mode")
-
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-
-	// The startEngine callback is invoked by the UI handler when the user saves
-	// an API key. It wires up the full sync infrastructure and returns a ready
-	// engine (not yet started — the handler starts it in a goroutine).
-	startEngine := func(apiKey string) (*engsync.Engine, error) {
+// makeStartEngine returns a StartEngineFunc that creates a fully wired sync engine.
+// It is used both in setup mode and normal mode (for reconfiguration).
+func makeStartEngine(stateDir string, ctx context.Context) ui.StartEngineFunc {
+	return func(apiKey string) (*engsync.Engine, error) {
 		// Reload config so it picks up the newly-written connector.yaml.
 		newCfg, err := config.Load()
 		if err != nil {
@@ -132,6 +122,19 @@ func runSetupMode(cfg *config.Config, stateDir string) error {
 		log.Printf("Sync engine initialized (interval: %ds)", newCfg.Sync.IntervalSeconds)
 		return engine, nil
 	}
+}
+
+// runSetupMode starts only the UI server so the user can enter their API key
+// via the setup wizard at http://localhost:<port>/setup.html.
+// When the user saves a valid API key, the startEngine callback initializes and
+// starts the sync engine inline — no restart required.
+func runSetupMode(cfg *config.Config, stateDir string) error {
+	log.Println("No API key configured — starting in setup mode")
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	startEngine := makeStartEngine(stateDir, ctx)
 
 	uiServer := ui.NewServer(cfg.UI.Port, nil, stateDir, cfg, startEngine)
 
@@ -190,12 +193,13 @@ func runNormalMode(cfg *config.Config, stateDir string) error {
 		_ = localStore.Update(func(s *store.State) { s.AgentID = resp.ID })
 	}
 
-	// Create sync engine and UI (no startEngine callback needed — engine already running)
-	engine := engsync.NewEngine(cfg, cloudClient, tallyClient, localStore, version)
-	uiServer := ui.NewServer(cfg.UI.Port, engine, stateDir, cfg, nil)
-
 	// Graceful shutdown
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
+	// Create sync engine and UI (startEngine callback needed for reconfiguration)
+	engine := engsync.NewEngine(cfg, cloudClient, tallyClient, localStore, version)
+	startEngine := makeStartEngine(stateDir, ctx)
+	uiServer := ui.NewServer(cfg.UI.Port, engine, stateDir, cfg, startEngine)
 	defer cancel()
 
 	g, gctx := errgroup.WithContext(ctx)

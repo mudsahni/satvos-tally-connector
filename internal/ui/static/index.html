@@ -88,6 +88,18 @@
             <button class="btn" id="sync-btn" onclick="triggerSync()">Sync Now</button>
             <div id="sync-feedback"></div>
         </div>
+
+        <div class="card">
+            <h2 onclick="toggleSettings()" style="cursor:pointer; user-select:none;">Settings <span id="settings-toggle">&#9654;</span></h2>
+            <div id="settings-body" style="display:none;">
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size:14px; color:#666; display:block; margin-bottom:6px;">API Key</label>
+                    <input type="text" id="new-api-key" placeholder="sk_..." style="width:100%; padding:8px 12px; border:1px solid #ddd; border-radius:6px; font-size:14px; box-sizing:border-box;">
+                </div>
+                <button class="btn" id="reconfig-btn" onclick="updateAPIKey()">Update API Key</button>
+                <div id="reconfig-feedback" style="font-size:13px; margin-top:8px; min-height:20px;"></div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -177,6 +189,52 @@
                 .finally(function() {
                     btn.disabled = false;
                 });
+        }
+
+        function toggleSettings() {
+            var body = document.getElementById("settings-body");
+            var toggle = document.getElementById("settings-toggle");
+            if (body.style.display === "none") {
+                body.style.display = "block";
+                toggle.innerHTML = "&#9660;";
+            } else {
+                body.style.display = "none";
+                toggle.innerHTML = "&#9654;";
+            }
+        }
+
+        function updateAPIKey() {
+            var btn = document.getElementById("reconfig-btn");
+            var fb = document.getElementById("reconfig-feedback");
+            var keyInput = document.getElementById("new-api-key");
+            var newKey = keyInput.value.trim();
+            if (!newKey) { fb.textContent = "Please enter an API key"; fb.style.color = "#ef4444"; return; }
+            btn.disabled = true;
+            fb.textContent = "Validating and updating...";
+            fb.style.color = "#666";
+
+            fetch("/api/reconfigure", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({new_api_key: newKey})
+            })
+            .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+            .then(function(res) {
+                if (res.data.error) {
+                    fb.textContent = res.data.error;
+                    fb.style.color = "#ef4444";
+                } else {
+                    fb.textContent = res.data.message || "API key updated successfully";
+                    fb.style.color = "#22c55e";
+                    keyInput.value = "";
+                    setTimeout(function() { fb.textContent = ""; }, 5000);
+                }
+            })
+            .catch(function() {
+                fb.textContent = "Failed to update API key";
+                fb.style.color = "#ef4444";
+            })
+            .finally(function() { btn.disabled = false; });
         }
 
         updateStatus();

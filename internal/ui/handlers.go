@@ -169,6 +169,90 @@ func (s *Server) handleValidateKey(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"valid": true})
 }
 
+func (s *Server) handleReconfigure(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		NewAPIKey string `json:"new_api_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	newKey := strings.TrimSpace(req.NewAPIKey)
+	if newKey == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "new_api_key is required"})
+		return
+	}
+
+	if !strings.HasPrefix(newKey, "sk_") {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "API key must start with 'sk_'"})
+		return
+	}
+
+	// Validate the key by attempting registration with SATVOS backend
+	testClient := cloud.NewClient(s.cfg.SATVOS.BaseURL, newKey)
+	vctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	_, err := testClient.Register(vctx, cloud.RegisterRequest{
+		Version: "validation-check",
+		OSInfo:  "validation-check",
+	})
+	if err != nil {
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "API key validation failed: " + err.Error()})
+		return
+	}
+
+	// Stop current engine if running
+	if engine := s.getEngine(); engine != nil {
+		engine.Stop()
+	}
+
+	// Write new config
+	if err := config.WriteConfigFile(s.stateDir, newKey); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "failed to save config: " + err.Error()})
+		return
+	}
+
+	// Start new engine
+	if s.startEngine != nil {
+		engine, err := s.startEngine(newKey)
+		if err != nil {
+			log.Printf("[ui] engine start failed after reconfigure: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error": "Config saved, but engine failed to start: " + err.Error() + ". Please restart the connector.",
+			})
+			return
+		}
+
+		s.setEngine(engine)
+
+		go func() {
+			if err := engine.Start(s.ctx); err != nil {
+				log.Printf("[ui] sync engine stopped after reconfigure: %v", err)
+			}
+		}()
+
+		log.Println("[ui] sync engine restarted with new API key")
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"status":  "ok",
+		"message": "API key updated and sync engine restarted.",
+	})
+}
+
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

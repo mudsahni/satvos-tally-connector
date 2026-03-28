@@ -69,6 +69,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/api/config", s.handleSaveConfig)
 	mux.HandleFunc("/api/validate-key", s.handleValidateKey)
 	mux.HandleFunc("/api/logs", s.handleLogs)
+	mux.HandleFunc("/api/reconfigure", s.handleReconfigure)
 
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf("127.0.0.1:%d", s.port),
