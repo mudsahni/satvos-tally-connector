@@ -1,12 +1,16 @@
 package ui
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/mudsahni/satvos-tally-connector/internal/cloud"
 	"github.com/mudsahni/satvos-tally-connector/internal/config"
+	"github.com/mudsahni/satvos-tally-connector/internal/logging"
 	"github.com/mudsahni/satvos-tally-connector/internal/sync"
 )
 
@@ -110,4 +114,72 @@ func (s *Server) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 		"status":  "ok",
 		"message": "Configuration saved. Sync engine started.",
 	})
+}
+
+func (s *Server) handleValidateKey(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		APIKey string `json:"api_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"valid": "false", "error": "invalid request body"})
+		return
+	}
+
+	key := strings.TrimSpace(req.APIKey)
+	if key == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"valid": "false", "error": "api_key is required"})
+		return
+	}
+
+	if !strings.HasPrefix(key, "sk_") {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"valid": "false", "error": "API key must start with 'sk_'"})
+		return
+	}
+
+	// Test the key by attempting registration with SATVOS backend
+	testClient := cloud.NewClient(s.cfg.SATVOS.BaseURL, key)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	_, err := testClient.Register(ctx, cloud.RegisterRequest{
+		Version: "validation-check",
+		OSInfo:  "validation-check",
+	})
+	if err != nil {
+		errMsg := err.Error()
+		// Make error messages user-friendly
+		if strings.Contains(errMsg, "401") || strings.Contains(errMsg, "403") || strings.Contains(errMsg, "unauthorized") || strings.Contains(errMsg, "forbidden") {
+			errMsg = "API key is invalid or expired"
+		} else if strings.Contains(errMsg, "connection refused") || strings.Contains(errMsg, "no such host") || strings.Contains(errMsg, "timeout") {
+			errMsg = "Cannot reach SATVOS servers. Check your internet connection."
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"valid": false, "error": errMsg})
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"valid": true})
+}
+
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+
+	lines, err := logging.ReadLastLines(s.stateDir, 200)
+	if err != nil {
+		http.Error(w, "failed to read logs: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, _ = w.Write([]byte(lines))
 }

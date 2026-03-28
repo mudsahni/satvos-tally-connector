@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mudsahni/satvos-tally-connector/internal/config"
 	engsync "github.com/mudsahni/satvos-tally-connector/internal/sync"
 )
 
@@ -25,6 +26,7 @@ type StartEngineFunc func(apiKey string) (*engsync.Engine, error)
 type Server struct {
 	port        int
 	stateDir    string
+	cfg         *config.Config
 	startEngine StartEngineFunc // called once after setup saves an API key
 	server      *http.Server
 
@@ -37,11 +39,12 @@ type Server struct {
 // engine may be nil if the connector is in setup mode (no API key configured).
 // startEngine is called when the user saves config via the setup wizard; it may be nil
 // if the engine is already running.
-func NewServer(port int, engine *engsync.Engine, stateDir string, startEngine StartEngineFunc) *Server {
+func NewServer(port int, engine *engsync.Engine, stateDir string, cfg *config.Config, startEngine StartEngineFunc) *Server {
 	return &Server{
 		port:        port,
 		engine:      engine,
 		stateDir:    stateDir,
+		cfg:         cfg,
 		startEngine: startEngine,
 	}
 }
@@ -64,6 +67,8 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/sync", s.handleTriggerSync)
 	mux.HandleFunc("/api/config", s.handleSaveConfig)
+	mux.HandleFunc("/api/validate-key", s.handleValidateKey)
+	mux.HandleFunc("/api/logs", s.handleLogs)
 
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf("127.0.0.1:%d", s.port),

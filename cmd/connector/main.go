@@ -15,6 +15,7 @@ import (
 
 	"github.com/mudsahni/satvos-tally-connector/internal/cloud"
 	"github.com/mudsahni/satvos-tally-connector/internal/config"
+	"github.com/mudsahni/satvos-tally-connector/internal/logging"
 	"github.com/mudsahni/satvos-tally-connector/internal/store"
 	"github.com/mudsahni/satvos-tally-connector/internal/svc"
 	engsync "github.com/mudsahni/satvos-tally-connector/internal/sync"
@@ -40,6 +41,17 @@ func main() {
 }
 
 func run() error {
+	stateDir := stateDirectory()
+
+	// Setup persistent logging (file + stdout) before anything else.
+	cleanup, err := logging.Setup(stateDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WARNING: could not setup file logging: %v\n", err)
+		// Continue without file logging — stdout still works.
+	} else {
+		defer cleanup()
+	}
+
 	log.Printf("SATVOS Tally Connector v%s (build: xml-sanitize+post-outbound) starting...", version)
 
 	// 1. Load config
@@ -47,8 +59,6 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-
-	stateDir := stateDirectory()
 
 	// 2. Setup mode — no API key configured yet
 	if cfg.NeedsSetup() {
@@ -123,7 +133,7 @@ func runSetupMode(cfg *config.Config, stateDir string) error {
 		return engine, nil
 	}
 
-	uiServer := ui.NewServer(cfg.UI.Port, nil, stateDir, startEngine)
+	uiServer := ui.NewServer(cfg.UI.Port, nil, stateDir, cfg, startEngine)
 
 	setupURL := fmt.Sprintf("http://localhost:%d/setup.html", cfg.UI.Port)
 	log.Printf("Opening setup wizard: %s", setupURL)
@@ -182,7 +192,7 @@ func runNormalMode(cfg *config.Config, stateDir string) error {
 
 	// Create sync engine and UI (no startEngine callback needed — engine already running)
 	engine := engsync.NewEngine(cfg, cloudClient, tallyClient, localStore, version)
-	uiServer := ui.NewServer(cfg.UI.Port, engine, stateDir, nil)
+	uiServer := ui.NewServer(cfg.UI.Port, engine, stateDir, cfg, nil)
 
 	// Graceful shutdown
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
