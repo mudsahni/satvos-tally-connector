@@ -27,16 +27,19 @@ internal/
                               PullOutbound, Ack, PushInbound)
     types.go                  All request/response DTOs for cloud API
   tally/
-    client.go                 Tally XML HTTP client (SendRequest, IsAvailable)
+    client.go                 Tally XML HTTP client (SendRequest, IsAvailable, CheckStatus)
     discover.go               Port scan discovery (9000–9010) via GetCompanyInfo probes
     health.go                 GetCompanyInfo, GetLedgers, GetStockItems, GetGodowns, GetUnits, GetCostCentres
-    import.go                 ImportVoucher, ParseImportResponse
-    requests.go               XML request builders (company info, master export, voucher import)
+    import.go                 ImportVoucher, ImportMaster, ParseImportResponse (CREATED/ALTERED/EXCEPTIONS/LINEERROR)
+    masters.go                EnsureLedgersExist, BuildLedgerXML (rich: PAN, GSTIN, address, TDS), deducteeTypeFromPAN
+    requests.go               XML request builders (company info, master export, voucher/master import with company name)
     responses.go              XML response types and parsers for each master type
   convert/
-    types.go                  VoucherDef, TaxEntry, InventoryItem structs
-    template.go               text/template for Tally voucher XML, xmlEscape helper
-    xml.go                    ToXML() — VoucherDef to Tally XML string
+    types.go                  VoucherDef, TaxEntry, InventoryItem, PartyDetail structs
+    template.go               text/template for Tally voucher XML (3 modes: accounting_invoice, item_invoice, journal)
+    xml.go                    ToXML() — VoucherDef to Tally XML with mode routing, REFERENCE, BILLALLOCATIONS
+  xmlutil/
+    escape.go                 Shared XML escaping function (used by convert, tally packages)
   sync/
     engine.go                 Sync engine: ticker loop, runCycle (heartbeat → masters → outbound → ack)
   store/
@@ -91,10 +94,12 @@ The sync engine runs on a timer (`sync.interval_seconds`). Each cycle:
    c. Per-fetch errors logged but don't abort remaining fetches
 6. processOutbound:
    a. PullOutbound(cursor, batchSize) from SATVOS
-   b. For each item: unmarshal VoucherDef → convert.ToXML → tally.ImportVoucher
-   c. Collect AckResults (success/failure per item)
-   d. Advance cursor in local state
-   e. POST /api/v1/sync/v1/ack with results
+   b. Collect all unique ledgers referenced across vouchers (party, purchase, tax)
+   c. EnsureLedgersExist — pre-creates missing ledgers with rich details (PAN, GSTIN, address, TDS, state). Uses DUPIGNORECOMBINE to skip existing. Party details come from VoucherDef.PartyDetails
+   d. For each item: unmarshal VoucherDef → convert.ToXML (routes to accounting_invoice/item_invoice/journal mode) → tally.ImportVoucher (with company name)
+   e. Collect AckResults (success/failure per item, includes TallyVoucherID from LASTVCHID)
+   f. Advance cursor in local state
+   g. POST /api/v1/sync/v1/ack with results
 ```
 
 ## Cloud API Endpoints Used
@@ -112,7 +117,12 @@ All requests use `Authorization: Bearer <api_key>`.
 
 ## Key Conventions
 
-- **Error resilience**: Each master fetch failure is logged but doesn't abort the cycle. Per-item import failures produce failed AckResults; processing continues for remaining items
+- **Error resilience**: Each master fetch failure is logged but doesn't abort the cycle. Per-item import failures produce failed AckResults; processing continues for remaining items. Ledger pre-creation failures are warnings (voucher imports continue — some may succeed if ledgers already exist)
+- **Voucher modes**: `VoucherMode` field routes to different Tally XML structures. `accounting_invoice` = Purchase type without inventory (service invoices). `item_invoice` = Purchase type with ALLINVENTORYENTRIES. `journal` = Journal type for non-GST expenses. Unknown modes return an error
+- **Rich ledger creation**: Party ledgers created with PAN (INCOMETAXNUMBER), GSTIN (PARTYGSTIN), address (ADDRESS.LIST), TDS applicability (deductee type derived from PAN 4th character: C=Company, F=Firm, T=Trust, H=HUF, P=Individual, A=AOP/BOI), GST registration type (defaults to "Regular")
+- **Supplier invoice reference**: Vouchers include REFERENCE (invoice number) and REFERENCEDATE (invoice date) tags, plus BILLALLOCATIONS.LIST for Tally's bill-wise tracking
+- **XML safety**: All user-derived values (company name, ledger names, addresses) are XML-escaped via `xmlutil.Escape()` before interpolation
+- **Import response parsing**: Handles both flat `<RESPONSE>` and envelope `<ENVELOPE>` formats. Captures CREATED, ALTERED, EXCEPTIONS, ERRORS, LASTVCHID, LINEERROR. `IsZeroCountOnly` flag distinguishes "nothing happened" from real errors (important for DUPIGNORECOMBINE master imports)
 - **Cursor pagination**: `OutboundCursor` persisted in local state; enables resumable batch processing across restarts
 - **Port discovery caching**: Discovered Tally port is cached in `state.json`; reused on next startup before re-scanning
 - **Windows service detection**: `svc.IsWindowsService()` switches between SCM-managed and standalone modes at startup
@@ -123,12 +133,14 @@ All requests use `Authorization: Bearer <api_key>`.
 
 ## Tech Stack
 
-Go 1.24, Viper (config), testify (testing), x/sync (errgroup), x/sys (Windows SCM). No database, no web framework — standard library `net/http`, `encoding/xml`, `encoding/json`, `text/template`, `embed`.
+Go 1.25, Viper (config), testify (testing), x/sync (errgroup), x/sys (Windows SCM). No database, no web framework — standard library `net/http`, `encoding/xml`, `encoding/json`, `text/template`, `embed`.
 
 ## Important Files for Common Tasks
 
 - **Adding a sync step**: `sync/engine.go` (`runCycle` method) — add step after `pushMasters`/`processOutbound`
-- **Modifying voucher conversion**: `convert/xml.go` (logic), `convert/template.go` (XML template), `convert/types.go` (data model)
+- **Modifying voucher conversion**: `convert/xml.go` (mode routing + logic), `convert/template.go` (XML template with conditionals), `convert/types.go` (VoucherDef, PartyDetail)
+- **Modifying ledger creation**: `tally/masters.go` (LedgerDef, BuildLedgerXML template, EnsureLedgersExist, deducteeTypeFromPAN)
+- **Adding XML-escaped fields**: Use `xmlutil.Escape()` from `internal/xmlutil/escape.go` — single source for all XML escaping
 - **Adding a Tally master type**: `tally/requests.go` (XML request builder), `tally/responses.go` (response parser + type), `tally/health.go` (client method), `cloud/types.go` (DTO), `sync/engine.go` (`pushMasters`)
 - **Changing config**: `config/config.go` — add field to struct, set default, add validation
 - **Modifying cloud API calls**: `cloud/client.go` (methods), `cloud/types.go` (DTOs)
@@ -138,7 +150,7 @@ Go 1.24, Viper (config), testify (testing), x/sync (errgroup), x/sys (Windows SC
 ## Gotchas
 
 - **Version is hardcoded**: `const version = "0.1.0"` in `cmd/connector/main.go:24` — no build-time injection yet
-- **text/template for XML**: Uses `text/template` (not `encoding/xml`) due to Tally's non-standard element names. Custom `xmlEscape` function handles `&<>"'`
+- **text/template for XML**: Uses `text/template` (not `encoding/xml`) due to Tally's non-standard element names. Shared `xmlutil.Escape()` handles `&<>"'` (used by convert, tally, and requests packages)
 - **Port scan range**: Discovery scans ports 9000–9010 only, with 2s timeout per port
 - **state.json contains secrets**: Agent ID stored in plaintext JSON. File created with `0600` permissions
 - **Windows service name**: `"SATVOSTallyConnector"` — hardcoded in `svc/windows.go` and `scripts/install.ps1`
