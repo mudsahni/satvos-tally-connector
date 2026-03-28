@@ -1,8 +1,9 @@
 package convert
 
 import (
-	"strings"
 	"text/template"
+
+	"github.com/mudsahni/satvos-tally-connector/internal/xmlutil"
 )
 
 var voucherTemplate = template.Must(template.New("voucher").Funcs(template.FuncMap{
@@ -10,18 +11,20 @@ var voucherTemplate = template.Must(template.New("voucher").Funcs(template.FuncM
 	"neg":       func(f float64) float64 { return -f },
 }).Parse(voucherXMLTemplate))
 
-var xmlReplacer = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "\"", "&quot;", "'", "&apos;")
-
 func xmlEscape(s string) string {
-	return xmlReplacer.Replace(s)
+	return xmlutil.Escape(s)
 }
 
 const voucherXMLTemplate = `<VOUCHER REMOTEID="{{.RemoteID | xmlEscape}}" VCHTYPE="{{.VoucherTypeName | xmlEscape}}" ACTION="Create">
 <DATE>{{.TallyDate}}</DATE>
 <VOUCHERTYPENAME>{{.VoucherTypeName | xmlEscape}}</VOUCHERTYPENAME>
 <VOUCHERNUMBER></VOUCHERNUMBER>
+{{- if .SupplierInvoiceNo}}
 <REFERENCE>{{.SupplierInvoiceNo | xmlEscape}}</REFERENCE>
+{{- end}}
+{{- if .SupplierInvoiceDate}}
 <REFERENCEDATE>{{.SupplierInvoiceDate}}</REFERENCEDATE>
+{{- end}}
 <ISINVOICE>{{.IsInvoice}}</ISINVOICE>
 <PERSISTEDVIEW>{{.PersistedView}}</PERSISTEDVIEW>
 <NARRATION>{{.Narration | xmlEscape}}</NARRATION>

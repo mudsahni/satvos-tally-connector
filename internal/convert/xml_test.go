@@ -232,6 +232,26 @@ func TestToXML_NoInventory(t *testing.T) {
 	}
 }
 
+func TestToXML_InvalidMode(t *testing.T) {
+	def := &VoucherDef{
+		VoucherType:    "Purchase",
+		VoucherMode:    "invalid_mode",
+		VoucherDate:    "2024-01-01",
+		PartyLedger:    "Test",
+		PurchaseLedger: "Purchase",
+		TotalAmount:    100,
+		RemoteID:       "r-invalid",
+	}
+
+	_, err := ToXML(def)
+	if err == nil {
+		t.Fatal("expected error for invalid voucher mode")
+	}
+	if !strings.Contains(err.Error(), "unrecognized voucher mode") {
+		t.Errorf("expected 'unrecognized voucher mode' error, got: %v", err)
+	}
+}
+
 func TestToXML_NilDef(t *testing.T) {
 	_, err := ToXML(nil)
 	if err == nil {
@@ -426,6 +446,17 @@ func TestToXML_JournalMode(t *testing.T) {
 	if count != 2 {
 		t.Errorf("expected 2 ALLLEDGERENTRIES.LIST blocks for journal, got %d", count)
 	}
+
+	// In journal mode, purchase amount should equal total (taxes suppressed),
+	// so debit == credit == 550.00.
+	purchaseBlock := extractBlock(xml, "ALLLEDGERENTRIES.LIST", 1)
+	if !strings.Contains(purchaseBlock, "<AMOUNT>-550.00</AMOUNT>") {
+		t.Errorf("journal purchase amount should be -550.00 (full total, no tax subtraction), got block: %s", purchaseBlock)
+	}
+	partyBlock := extractBlock(xml, "ALLLEDGERENTRIES.LIST", 0)
+	if !strings.Contains(partyBlock, "<AMOUNT>550.00</AMOUNT>") {
+		t.Errorf("journal party amount should be 550.00, got block: %s", partyBlock)
+	}
 }
 
 func TestToXML_ReferenceFields(t *testing.T) {
@@ -502,6 +533,14 @@ func TestToXML_NoBillAllocationsWithoutInvoiceNo(t *testing.T) {
 
 	if strings.Contains(xml, "BILLALLOCATIONS.LIST") {
 		t.Error("expected no BILLALLOCATIONS.LIST when SupplierInvoiceNo is empty")
+	}
+
+	// REFERENCE and REFERENCEDATE should also be absent when not set (S4)
+	if strings.Contains(xml, "<REFERENCE>") {
+		t.Error("expected no REFERENCE tag when SupplierInvoiceNo is empty")
+	}
+	if strings.Contains(xml, "<REFERENCEDATE>") {
+		t.Error("expected no REFERENCEDATE tag when SupplierInvoiceDate is empty")
 	}
 }
 

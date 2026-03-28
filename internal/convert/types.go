@@ -40,5 +40,4 @@ type PartyDetail struct {
 	PAN       string `json:"pan"`
 	GSTIN     string `json:"gstin"`
 	State     string `json:"state"`
-	StateCode string `json:"state_code"`
 }

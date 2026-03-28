@@ -31,14 +31,8 @@ func ToXML(def *VoucherDef) (string, error) {
 		return "", fmt.Errorf("nil voucher definition")
 	}
 
-	// Calculate purchase amount = total - sum(tax)
-	taxTotal := 0.0
-	for _, t := range def.TaxEntries {
-		taxTotal += t.Amount
-	}
-	purchaseAmount := def.TotalAmount - taxTotal
-
-	// Convert date from YYYY-MM-DD to YYYYMMDD
+	// Convert date from YYYY-MM-DD to YYYYMMDD.
+	// Dates are expected in YYYY-MM-DD format from the backend.
 	tallyDate := strings.ReplaceAll(def.VoucherDate, "-", "")
 
 	// Determine voucher mode, defaulting to accounting_invoice
@@ -47,8 +41,19 @@ func ToXML(def *VoucherDef) (string, error) {
 		voucherMode = "accounting_invoice"
 	}
 
-	// Derive type-specific fields from voucher mode
-	voucherTypeName := "Purchase"
+	switch voucherMode {
+	case "accounting_invoice", "item_invoice", "journal":
+		// valid
+	default:
+		return "", fmt.Errorf("unrecognized voucher mode: %q", voucherMode)
+	}
+
+	// Use VoucherType from definition, with sensible defaults.
+	voucherTypeName := def.VoucherType
+	if voucherTypeName == "" {
+		voucherTypeName = "Purchase"
+	}
+
 	isInvoice := "Yes"
 	persistedView := "Invoice Voucher View"
 	if voucherMode == "journal" {
@@ -56,6 +61,17 @@ func ToXML(def *VoucherDef) (string, error) {
 		isInvoice = "No"
 		persistedView = "Accounting Voucher View"
 	}
+
+	// Calculate purchase amount = total - sum(tax).
+	// In journal mode, tax entries are suppressed in the template, so
+	// purchaseAmount must equal TotalAmount to keep debit == credit.
+	taxTotal := 0.0
+	if voucherMode != "journal" {
+		for _, t := range def.TaxEntries {
+			taxTotal += t.Amount
+		}
+	}
+	purchaseAmount := def.TotalAmount - taxTotal
 
 	// Convert supplier invoice date from YYYY-MM-DD to YYYYMMDD
 	supplierDate := strings.ReplaceAll(def.SupplierInvoiceDate, "-", "")

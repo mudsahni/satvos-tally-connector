@@ -14,7 +14,10 @@ func TestBuildLedgerXML_AllFields(t *testing.T) {
 		GSTIN:       "27ABCCE1234F1Z5",
 		State:       "Maharashtra",
 	}
-	xml := BuildLedgerXML(&def)
+	xml, err := BuildLedgerXML(&def)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	checks := []struct {
 		label    string
@@ -44,7 +47,10 @@ func TestBuildLedgerXML_MinimalFields(t *testing.T) {
 		Name:        "Simple Ledger",
 		ParentGroup: "Purchase Accounts",
 	}
-	xml := BuildLedgerXML(&def)
+	xml, err := BuildLedgerXML(&def)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	// Should contain basic fields
 	if !strings.Contains(xml, `<NAME>Simple Ledger</NAME>`) {
@@ -71,7 +77,10 @@ func TestBuildLedgerXML_XMLEscape(t *testing.T) {
 		Name:        `M&M "Foods" <Pvt>`,
 		ParentGroup: "Sundry Creditors",
 	}
-	xml := BuildLedgerXML(&def)
+	xml, err := BuildLedgerXML(&def)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if !strings.Contains(xml, `M&amp;M &quot;Foods&quot; &lt;Pvt&gt;`) {
 		t.Errorf("XML escaping not applied correctly, got:\n%s", xml)
@@ -105,5 +114,65 @@ func TestDeducteeTypeFromPAN(t *testing.T) {
 		if got != tc.expected {
 			t.Errorf("deducteeTypeFromPAN(%q) = %q, want %q", tc.pan, got, tc.expected)
 		}
+	}
+}
+
+func TestBuildLedgerXML_CustomGSTRegType(t *testing.T) {
+	def := LedgerDef{
+		Name:        "Custom GST Vendor",
+		ParentGroup: "Sundry Creditors",
+		GSTIN:       "27ABCCE1234F1Z5",
+		GSTRegType:  "Composition",
+	}
+	xml, err := BuildLedgerXML(&def)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(xml, "<GSTREGISTRATIONTYPE>Composition</GSTREGISTRATIONTYPE>") {
+		t.Errorf("expected custom GSTRegType=Composition, got:\n%s", xml)
+	}
+}
+
+func TestBuildLedgerXML_DefaultGSTRegType(t *testing.T) {
+	def := LedgerDef{
+		Name:        "Default GST Vendor",
+		ParentGroup: "Sundry Creditors",
+		GSTIN:       "27ABCCE1234F1Z5",
+	}
+	xml, err := BuildLedgerXML(&def)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(xml, "<GSTREGISTRATIONTYPE>Regular</GSTREGISTRATIONTYPE>") {
+		t.Errorf("expected default GSTRegType=Regular, got:\n%s", xml)
+	}
+}
+
+// TestIsZeroCountOnly_MasterImport verifies that ImportResult.IsZeroCountOnly
+// is set when the only "error" is zero created/altered counts, which is expected
+// with DUPIGNORECOMBINE when all ledgers already exist.
+func TestIsZeroCountOnly_MasterImport(t *testing.T) {
+	// Simulate a Tally response where CREATED=0, ALTERED=0, no LINEERROR.
+	result := buildResult(0, 0, 0, 0, "", "", "", []byte("<ENVELOPE/>"))
+	if !result.IsZeroCountOnly {
+		t.Error("expected IsZeroCountOnly=true when CREATED=0 ALTERED=0 with no real errors")
+	}
+	if result.Success {
+		t.Error("expected Success=false for zero counts")
+	}
+
+	// Simulate a Tally response with LINEERROR — should NOT be IsZeroCountOnly.
+	result2 := buildResult(0, 0, 0, 0, "", "", "some error", []byte("<ENVELOPE/>"))
+	if result2.IsZeroCountOnly {
+		t.Error("expected IsZeroCountOnly=false when LINEERROR is present")
+	}
+
+	// Simulate success case — should NOT be IsZeroCountOnly.
+	result3 := buildResult(1, 0, 0, 0, "V1", "", "", []byte("<ENVELOPE/>"))
+	if result3.IsZeroCountOnly {
+		t.Error("expected IsZeroCountOnly=false when CREATED > 0")
+	}
+	if !result3.Success {
+		t.Error("expected Success=true when CREATED > 0")
 	}
 }

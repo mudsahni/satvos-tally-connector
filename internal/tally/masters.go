@@ -6,13 +6,10 @@ import (
 	"fmt"
 	"strings"
 	"text/template"
+
+	"github.com/mudsahni/satvos-tally-connector/internal/xmlutil"
 )
 
-// xmlEsc escapes XML special characters.
-func xmlEsc(s string) string {
-	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "\"", "&quot;", "'", "&apos;")
-	return r.Replace(s)
-}
 
 // deducteeTypeFromPAN derives the TDS deductee type from the 4th character of a PAN.
 func deducteeTypeFromPAN(pan string) string {
@@ -45,10 +42,11 @@ type LedgerDef struct {
 	PAN         string
 	GSTIN       string
 	State       string
+	GSTRegType  string // e.g. "Regular", "Composition", "Unregistered"; defaults to "Regular"
 }
 
 var ledgerTemplate = template.Must(template.New("ledger").Funcs(template.FuncMap{
-	"xmlEscape":           xmlEsc,
+	"xmlEscape":           xmlutil.Escape,
 	"deducteeTypeFromPAN": deducteeTypeFromPAN,
 }).Parse(ledgerXMLTemplate))
 
@@ -63,11 +61,11 @@ const ledgerXMLTemplate = `<LEDGER NAME="{{.Name | xmlEscape}}" ACTION="Create">
 {{- if .PAN}}
 <INCOMETAXNUMBER>{{.PAN | xmlEscape}}</INCOMETAXNUMBER>
 <ISTDSAPPLICABLE>Yes</ISTDSAPPLICABLE>
-<TDSDEDUCTEETYPE>{{deducteeTypeFromPAN .PAN}}</TDSDEDUCTEETYPE>
+<TDSDEDUCTEETYPE>{{deducteeTypeFromPAN .PAN | xmlEscape}}</TDSDEDUCTEETYPE>
 {{- end}}
 {{- if .GSTIN}}
 <PARTYGSTIN>{{.GSTIN | xmlEscape}}</PARTYGSTIN>
-<GSTREGISTRATIONTYPE>Regular</GSTREGISTRATIONTYPE>
+<GSTREGISTRATIONTYPE>{{.GSTRegType | xmlEscape}}</GSTREGISTRATIONTYPE>
 {{- end}}
 {{- if .State}}
 <LEDSTATENAME>{{.State | xmlEscape}}</LEDSTATENAME>
@@ -75,10 +73,16 @@ const ledgerXMLTemplate = `<LEDGER NAME="{{.Name | xmlEscape}}" ACTION="Create">
 </LEDGER>`
 
 // BuildLedgerXML creates XML for a single Tally ledger.
-func BuildLedgerXML(def *LedgerDef) string {
+func BuildLedgerXML(def *LedgerDef) (string, error) {
+	// Default GSTRegType if not set.
+	if def.GSTRegType == "" {
+		def.GSTRegType = "Regular"
+	}
 	var buf bytes.Buffer
-	_ = ledgerTemplate.Execute(&buf, def)
-	return buf.String()
+	if err := ledgerTemplate.Execute(&buf, def); err != nil {
+		return "", fmt.Errorf("executing ledger template: %w", err)
+	}
+	return buf.String(), nil
 }
 
 // EnsureLedgersExist creates any ledgers in Tally that don't already exist.
@@ -89,8 +93,12 @@ func (c *Client) EnsureLedgersExist(ctx context.Context, companyName string, led
 	}
 
 	var xmlParts []string
-	for _, l := range ledgers {
-		xmlParts = append(xmlParts, BuildLedgerXML(&l))
+	for i := range ledgers {
+		part, err := BuildLedgerXML(&ledgers[i])
+		if err != nil {
+			return fmt.Errorf("building ledger XML for %q: %w", ledgers[i].Name, err)
+		}
+		xmlParts = append(xmlParts, part)
 	}
 	combinedXML := strings.Join(xmlParts, "\n")
 
@@ -99,12 +107,12 @@ func (c *Client) EnsureLedgersExist(ctx context.Context, companyName string, led
 		return fmt.Errorf("creating ledgers in Tally: %w", err)
 	}
 
-	// With DUPIGNORECOMBINE, existing ledgers are skipped.
-	// Only report errors from LINEERROR, not from counts.
+	// With DUPIGNORECOMBINE, existing ledgers are skipped, so CREATED=0 ALTERED=0
+	// is expected. Only report real errors (LINEERROR, EXCEPTIONS).
+	if result.IsZeroCountOnly {
+		return nil
+	}
 	for _, e := range result.Errors {
-		if strings.Contains(e, "Tally created 0") || strings.Contains(e, "Tally processed") {
-			continue // These are count-based messages, not real errors for master import
-		}
 		return fmt.Errorf("tally ledger creation errors: %s", e)
 	}
 
