@@ -75,6 +75,8 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/api/logs", s.handleLogs)
 	mux.HandleFunc("/api/reconfigure", s.handleReconfigure)
 	mux.HandleFunc("/api/reset", s.handleReset)
+	mux.HandleFunc("/api/pause", s.handlePause)
+	mux.HandleFunc("/api/resume", s.handleResume)
 
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf("127.0.0.1:%d", s.port),

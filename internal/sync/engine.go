@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mudsahni/satvos-tally-connector/internal/cloud"
@@ -35,6 +36,8 @@ type Engine struct {
 	syncSuccessCount int
 	syncFailCount    int
 	syncStatsMu      sync.RWMutex
+
+	paused atomic.Bool
 }
 
 // NewEngine creates a new sync engine.
@@ -74,6 +77,21 @@ func (e *Engine) Stop() {
 	e.stopOnce.Do(func() { close(e.stopCh) })
 }
 
+// Pause pauses the sync engine so cycles are skipped.
+func (e *Engine) Pause() {
+	e.paused.Store(true)
+	log.Println("[sync] paused by user")
+}
+
+// Resume resumes the sync engine after a pause.
+func (e *Engine) Resume() {
+	e.paused.Store(false)
+	log.Println("[sync] resumed by user")
+}
+
+// IsPaused returns whether the engine is paused.
+func (e *Engine) IsPaused() bool { return e.paused.Load() }
+
 // TriggerSync runs a single sync cycle immediately (used by the UI).
 func (e *Engine) TriggerSync(ctx context.Context) {
 	e.runCycle(ctx)
@@ -93,6 +111,7 @@ type Status struct {
 	LastSyncAt       string `json:"last_sync_at,omitempty"`
 	SyncSuccessCount int    `json:"sync_success_count"`
 	SyncFailCount    int    `json:"sync_fail_count"`
+	IsPaused         bool   `json:"is_paused"`
 }
 
 // GetStatus returns the current sync status for the UI.
@@ -143,6 +162,7 @@ func (e *Engine) GetStatus() Status {
 		LastSyncAt:       lastSyncAtStr,
 		SyncSuccessCount: syncSuccess,
 		SyncFailCount:    syncFail,
+		IsPaused:         e.IsPaused(),
 	}
 }
 
@@ -164,6 +184,10 @@ func (e *Engine) clearLastError() {
 }
 
 func (e *Engine) runCycle(ctx context.Context) {
+	if e.paused.Load() {
+		log.Println("[sync] skipping cycle (paused)")
+		return
+	}
 	log.Println("[sync] starting sync cycle")
 
 	tallyAvailable := e.tallyClient.IsAvailable(ctx)

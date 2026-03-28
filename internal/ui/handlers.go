@@ -254,6 +254,38 @@ func (s *Server) handleReconfigure(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handlePause(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	engine := s.getEngine()
+	if engine == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "connector not configured yet"})
+		return
+	}
+	engine.Pause()
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "message": "Sync paused"})
+}
+
+func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	engine := s.getEngine()
+	if engine == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "connector not configured yet"})
+		return
+	}
+	engine.Resume()
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "message": "Sync resumed"})
+}
+
 func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

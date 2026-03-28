@@ -30,6 +30,12 @@
         .btn { background: #1a1a2e; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-size: 14px; cursor: pointer; transition: background 0.2s; }
         .btn:hover { background: #2a2a4e; }
         .btn:disabled { background: #999; cursor: not-allowed; }
+        .btn-yellow { background: #eab308; }
+        .btn-yellow:hover { background: #ca8a04; }
+        .btn-green { background: #22c55e; }
+        .btn-green:hover { background: #16a34a; }
+        .btn-group { display: flex; gap: 8px; justify-content: center; }
+        .paused-bar { background: #fefce8; border: 1px solid #fef08a; color: #854d0e; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 14px; text-align: center; display: none; }
         #sync-feedback { font-size: 13px; color: #22c55e; margin-top: 8px; min-height: 20px; }
         a.nav-link { color: #aaa; font-size: 13px; text-decoration: none; margin-left: 16px; }
         a.nav-link:hover { color: #fff; }
@@ -96,8 +102,13 @@
             </div>
         </div>
 
+        <div class="paused-bar" id="paused-bar">Sync is paused</div>
+
         <div class="card actions">
-            <button class="btn" id="sync-btn" onclick="triggerSync()">Sync Now</button>
+            <div class="btn-group">
+                <button class="btn" id="sync-btn" onclick="triggerSync()">Sync Now</button>
+                <button class="btn btn-yellow" id="pause-btn" onclick="togglePause()">Pause</button>
+            </div>
             <div id="sync-feedback"></div>
         </div>
 
@@ -164,6 +175,22 @@
                     }
                     document.getElementById("sync-counts").textContent = (data.sync_success_count || 0) + " success / " + (data.sync_fail_count || 0) + " failed";
 
+                    // Pause/resume state
+                    var pauseBtn = document.getElementById("pause-btn");
+                    var syncBtn = document.getElementById("sync-btn");
+                    var pausedBar = document.getElementById("paused-bar");
+                    if (data.is_paused) {
+                        pauseBtn.textContent = "Resume";
+                        pauseBtn.className = "btn btn-green";
+                        syncBtn.disabled = true;
+                        pausedBar.style.display = "block";
+                    } else {
+                        pauseBtn.textContent = "Pause";
+                        pauseBtn.className = "btn btn-yellow";
+                        syncBtn.disabled = false;
+                        pausedBar.style.display = "none";
+                    }
+
                     var banner = document.getElementById("error-banner");
                     if (data.error_type) {
                         banner.className = "error-banner";
@@ -224,6 +251,24 @@
                 .finally(function() {
                     btn.disabled = false;
                 });
+        }
+
+        function togglePause() {
+            var pauseBtn = document.getElementById("pause-btn");
+            var isPaused = pauseBtn.textContent === "Resume";
+            var endpoint = isPaused ? "/api/resume" : "/api/pause";
+            pauseBtn.disabled = true;
+
+            fetch(endpoint, { method: "POST" })
+            .then(function(r) { return r.json(); })
+            .then(function() { updateStatus(); })
+            .catch(function() {
+                var fb = document.getElementById("sync-feedback");
+                fb.textContent = "Failed to " + (isPaused ? "resume" : "pause") + " sync";
+                fb.style.color = "#ef4444";
+                setTimeout(function() { fb.textContent = ""; }, 3000);
+            })
+            .finally(function() { pauseBtn.disabled = false; });
         }
 
         function toggleSettings() {
