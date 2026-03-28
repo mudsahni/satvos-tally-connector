@@ -29,7 +29,7 @@ func Setup(stateDir string) (func(), error) {
 	// Rotate if the existing file is too large.
 	rotateIfNeeded(logDir, logPath)
 
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec // logPath is derived from stateDir, not user input
 	if err != nil {
 		return nil, fmt.Errorf("opening log file: %w", err)
 	}
@@ -61,7 +61,7 @@ func rotateIfNeeded(logDir, logPath string) {
 // ReadLastLines reads the last n lines from the current log file.
 func ReadLastLines(stateDir string, n int) (string, error) {
 	logPath := filepath.Join(stateDir, "logs", logFileName)
-	data, err := os.ReadFile(logPath)
+	data, err := os.ReadFile(logPath) //nolint:gosec // logPath is derived from stateDir constant, not user input
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "No logs yet.", nil
