@@ -127,6 +127,18 @@
                 <div id="reset-feedback" style="font-size:13px; margin-top:8px; min-height:20px;"></div>
             </div>
         </div>
+
+        <div class="card">
+            <details id="logs-details">
+                <summary style="cursor:pointer; user-select:none; font-size:15px; font-weight:600; color:#555; text-transform:uppercase; letter-spacing:0.5px;">Logs</summary>
+                <div style="margin-top:16px;">
+                    <button class="btn" onclick="loadLogs()" style="margin-bottom:12px;">Refresh Logs</button>
+                    <div style="max-height:400px; overflow-y:auto; background:#1a1a2e; border-radius:6px; padding:12px;">
+                        <pre id="log-content" style="margin:0; font-family:monospace; font-size:12px; color:#ddd; white-space:pre-wrap; word-wrap:break-word;">Click "Refresh Logs" to load.</pre>
+                    </div>
+                </div>
+            </details>
+        </div>
     </div>
 
     <script>
@@ -345,6 +357,19 @@
                 fb.style.color = "#ef4444";
                 btn.disabled = false;
             });
+        }
+
+        function loadLogs() {
+            fetch("/api/logs")
+                .then(function(r) { return r.text(); })
+                .then(function(text) {
+                    var logEl = document.getElementById("log-content");
+                    logEl.textContent = text;
+                    logEl.scrollTop = logEl.scrollHeight;
+                })
+                .catch(function() {
+                    document.getElementById("log-content").textContent = "Failed to load logs.";
+                });
         }
 
         updateStatus();
