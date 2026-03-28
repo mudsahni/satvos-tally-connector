@@ -45,6 +45,11 @@ func (s *Server) handleTriggerSync(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "connector not configured yet"})
 		return
 	}
+	if engine.IsSyncing() {
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "sync already in progress"})
+		return
+	}
 	go engine.TriggerSync(s.ctx)
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "sync triggered"})
 }

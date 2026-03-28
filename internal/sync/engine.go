@@ -37,7 +37,8 @@ type Engine struct {
 	syncFailCount    int
 	syncStatsMu      sync.RWMutex
 
-	paused atomic.Bool
+	paused  atomic.Bool
+	syncing atomic.Bool
 }
 
 // NewEngine creates a new sync engine.
@@ -58,7 +59,10 @@ func (e *Engine) Start(ctx context.Context) error {
 	ticker := time.NewTicker(time.Duration(e.cfg.Sync.IntervalSeconds) * time.Second)
 	defer ticker.Stop()
 
-	e.runCycle(ctx)
+	if e.syncing.CompareAndSwap(false, true) {
+		e.runCycle(ctx)
+		e.syncing.Store(false)
+	}
 
 	for {
 		select {
@@ -67,7 +71,10 @@ func (e *Engine) Start(ctx context.Context) error {
 		case <-e.stopCh:
 			return nil
 		case <-ticker.C:
-			e.runCycle(ctx)
+			if e.syncing.CompareAndSwap(false, true) {
+				e.runCycle(ctx)
+				e.syncing.Store(false)
+			}
 		}
 	}
 }
@@ -93,9 +100,18 @@ func (e *Engine) Resume() {
 func (e *Engine) IsPaused() bool { return e.paused.Load() }
 
 // TriggerSync runs a single sync cycle immediately (used by the UI).
-func (e *Engine) TriggerSync(ctx context.Context) {
+// It returns false if a sync is already in progress.
+func (e *Engine) TriggerSync(ctx context.Context) bool {
+	if !e.syncing.CompareAndSwap(false, true) {
+		return false
+	}
+	defer e.syncing.Store(false)
 	e.runCycle(ctx)
+	return true
 }
+
+// IsSyncing returns whether a sync cycle is currently running.
+func (e *Engine) IsSyncing() bool { return e.syncing.Load() }
 
 // Status holds the current sync status for the UI.
 type Status struct {
@@ -112,6 +128,7 @@ type Status struct {
 	SyncSuccessCount int    `json:"sync_success_count"`
 	SyncFailCount    int    `json:"sync_fail_count"`
 	IsPaused         bool   `json:"is_paused"`
+	IsSyncing        bool   `json:"is_syncing"`
 }
 
 // GetStatus returns the current sync status for the UI.
@@ -163,6 +180,7 @@ func (e *Engine) GetStatus() Status {
 		SyncSuccessCount: syncSuccess,
 		SyncFailCount:    syncFail,
 		IsPaused:         e.IsPaused(),
+		IsSyncing:        e.IsSyncing(),
 	}
 }
 
