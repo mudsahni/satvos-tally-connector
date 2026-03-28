@@ -84,6 +84,18 @@
             </div>
         </div>
 
+        <div class="card">
+            <h2>Sync Activity</h2>
+            <div class="status-row">
+                <span class="status-label">Last Synced</span>
+                <span class="status-value" id="last-sync">--</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Documents Synced</span>
+                <span class="status-value" id="sync-counts">--</span>
+            </div>
+        </div>
+
         <div class="card actions">
             <button class="btn" id="sync-btn" onclick="triggerSync()">Sync Now</button>
             <div id="sync-feedback"></div>
@@ -132,6 +144,25 @@
                     document.getElementById("company").textContent = data.tally_company || "--";
                     document.getElementById("tally-port").textContent = data.tally_port || "--";
                     document.getElementById("agent-id").textContent = data.agent_id || "--";
+
+                    // Sync activity
+                    if (data.last_sync_at) {
+                        var syncDate = new Date(data.last_sync_at);
+                        var now = new Date();
+                        var diffMs = now - syncDate;
+                        var diffMins = Math.floor(diffMs / 60000);
+                        if (diffMins < 1) {
+                            document.getElementById("last-sync").textContent = "Just now";
+                        } else if (diffMins < 60) {
+                            document.getElementById("last-sync").textContent = diffMins + " minute" + (diffMins === 1 ? "" : "s") + " ago";
+                        } else {
+                            var diffHrs = Math.floor(diffMins / 60);
+                            document.getElementById("last-sync").textContent = diffHrs + " hour" + (diffHrs === 1 ? "" : "s") + " ago";
+                        }
+                    } else {
+                        document.getElementById("last-sync").textContent = "Never";
+                    }
+                    document.getElementById("sync-counts").textContent = (data.sync_success_count || 0) + " success / " + (data.sync_fail_count || 0) + " failed";
 
                     var banner = document.getElementById("error-banner");
                     if (data.error_type) {
