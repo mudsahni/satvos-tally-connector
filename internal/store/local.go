@@ -50,6 +50,14 @@ func (s *LocalStore) Update(fn func(*State)) error {
 	return s.save()
 }
 
+// Reset clears all in-memory state and deletes the state file from disk.
+func (s *LocalStore) Reset() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.state = State{}
+	return os.Remove(s.path)
+}
+
 func (s *LocalStore) load() error {
 	data, err := os.ReadFile(s.path)
 	if err != nil {

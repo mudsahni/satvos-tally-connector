@@ -98,6 +98,10 @@
                 </div>
                 <button class="btn" id="reconfig-btn" onclick="updateAPIKey()">Update API Key</button>
                 <div id="reconfig-feedback" style="font-size:13px; margin-top:8px; min-height:20px;"></div>
+
+                <hr style="margin: 20px 0; border: none; border-top: 1px solid #f0f0f0;">
+                <button class="btn" id="reset-btn" onclick="resetConnection()" style="background:#ef4444;">Reset Connection</button>
+                <div id="reset-feedback" style="font-size:13px; margin-top:8px; min-height:20px;"></div>
             </div>
         </div>
     </div>
@@ -235,6 +239,36 @@
                 fb.style.color = "#ef4444";
             })
             .finally(function() { btn.disabled = false; });
+        }
+
+        function resetConnection() {
+            if (!confirm("Are you sure? This will delete your configuration and all local state. The connector will return to setup mode.")) {
+                return;
+            }
+            var btn = document.getElementById("reset-btn");
+            var fb = document.getElementById("reset-feedback");
+            btn.disabled = true;
+            fb.textContent = "Resetting...";
+            fb.style.color = "#666";
+
+            fetch("/api/reset", { method: "POST" })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    fb.textContent = data.error;
+                    fb.style.color = "#ef4444";
+                    btn.disabled = false;
+                } else {
+                    fb.textContent = data.message || "Connection reset.";
+                    fb.style.color = "#22c55e";
+                    setTimeout(function() { window.location.href = "/setup.html"; }, 1500);
+                }
+            })
+            .catch(function() {
+                fb.textContent = "Failed to reset connection";
+                fb.style.color = "#ef4444";
+                btn.disabled = false;
+            });
         }
 
         updateStatus();

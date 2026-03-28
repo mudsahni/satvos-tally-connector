@@ -106,6 +106,11 @@ func WriteConfigFile(dir, apiKey string) error {
 	return nil
 }
 
+// DeleteConfigFile removes the connector.yaml file from the given directory.
+func DeleteConfigFile(stateDir string) error {
+	return os.Remove(filepath.Join(stateDir, "connector.yaml"))
+}
+
 // clamp enforces min/max bounds on numeric config values.
 func (c *Config) clamp() {
 	if c.Sync.IntervalSeconds < 5 {

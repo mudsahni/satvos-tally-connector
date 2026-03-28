@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -250,6 +251,41 @@ func (s *Server) handleReconfigure(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status":  "ok",
 		"message": "API key updated and sync engine restarted.",
+	})
+}
+
+func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+
+	// Stop engine if running
+	if engine := s.getEngine(); engine != nil {
+		engine.Stop()
+	}
+
+	// Delete config file
+	if err := config.DeleteConfigFile(s.stateDir); err != nil && !os.IsNotExist(err) {
+		log.Printf("[ui] warning: failed to delete config file: %v", err)
+	}
+
+	// Reset local state
+	if s.store != nil {
+		if err := s.store.Reset(); err != nil && !os.IsNotExist(err) {
+			log.Printf("[ui] warning: failed to reset local state: %v", err)
+		}
+	}
+
+	// Clear engine reference
+	s.setEngine(nil)
+
+	log.Println("[ui] connection reset by user")
+
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"status":  "ok",
+		"message": "Connection reset. Redirecting to setup...",
 	})
 }
 

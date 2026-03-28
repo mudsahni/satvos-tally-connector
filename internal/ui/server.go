@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mudsahni/satvos-tally-connector/internal/config"
+	"github.com/mudsahni/satvos-tally-connector/internal/store"
 	engsync "github.com/mudsahni/satvos-tally-connector/internal/sync"
 )
 
@@ -28,6 +29,7 @@ type Server struct {
 	stateDir    string
 	cfg         *config.Config
 	startEngine StartEngineFunc // called once after setup saves an API key
+	store       *store.LocalStore
 	server      *http.Server
 
 	mu     sync.RWMutex
@@ -39,13 +41,15 @@ type Server struct {
 // engine may be nil if the connector is in setup mode (no API key configured).
 // startEngine is called when the user saves config via the setup wizard; it may be nil
 // if the engine is already running.
-func NewServer(port int, engine *engsync.Engine, stateDir string, cfg *config.Config, startEngine StartEngineFunc) *Server {
+// localStore may be nil in setup mode (created later by startEngine).
+func NewServer(port int, engine *engsync.Engine, stateDir string, cfg *config.Config, startEngine StartEngineFunc, localStore *store.LocalStore) *Server {
 	return &Server{
 		port:        port,
 		engine:      engine,
 		stateDir:    stateDir,
 		cfg:         cfg,
 		startEngine: startEngine,
+		store:       localStore,
 	}
 }
 
@@ -70,6 +74,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/api/validate-key", s.handleValidateKey)
 	mux.HandleFunc("/api/logs", s.handleLogs)
 	mux.HandleFunc("/api/reconfigure", s.handleReconfigure)
+	mux.HandleFunc("/api/reset", s.handleReset)
 
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf("127.0.0.1:%d", s.port),
