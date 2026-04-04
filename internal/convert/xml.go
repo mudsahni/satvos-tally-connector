@@ -37,9 +37,14 @@ func ToXML(def *VoucherDef) (string, error) {
 		return "", fmt.Errorf("nil voucher definition")
 	}
 
-	// Convert date from YYYY-MM-DD to YYYYMMDD.
-	// Dates are expected in YYYY-MM-DD format from the backend.
+	// Validate and convert date from YYYY-MM-DD to YYYYMMDD.
+	if def.VoucherDate == "" {
+		return "", fmt.Errorf("VoucherDate is required")
+	}
 	tallyDate := strings.ReplaceAll(def.VoucherDate, "-", "")
+	if len(tallyDate) != 8 {
+		return "", fmt.Errorf("invalid VoucherDate %q: expected YYYY-MM-DD format", def.VoucherDate)
+	}
 
 	// Determine voucher mode, defaulting to accounting_invoice
 	voucherMode := def.VoucherMode
@@ -95,8 +100,15 @@ func ToXML(def *VoucherDef) (string, error) {
 		def.InventoryItems[i].Amount = roundAmount(def.InventoryItems[i].Amount)
 	}
 
-	// Convert supplier invoice date from YYYY-MM-DD to YYYYMMDD
-	supplierDate := strings.ReplaceAll(def.SupplierInvoiceDate, "-", "")
+	// Convert supplier invoice date from YYYY-MM-DD to YYYYMMDD.
+	// Allow empty (optional), but validate format if set.
+	supplierDate := ""
+	if def.SupplierInvoiceDate != "" {
+		supplierDate = strings.ReplaceAll(def.SupplierInvoiceDate, "-", "")
+		if len(supplierDate) != 8 {
+			supplierDate = "" // silently skip invalid supplier date
+		}
+	}
 
 	data := templateData{
 		RemoteID:            def.RemoteID,

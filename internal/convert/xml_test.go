@@ -544,6 +544,44 @@ func TestToXML_NoBillAllocationsWithoutInvoiceNo(t *testing.T) {
 	}
 }
 
+func TestToXML_EmptyVoucherDate(t *testing.T) {
+	def := &VoucherDef{
+		VoucherType:    "Purchase",
+		VoucherDate:    "",
+		PartyLedger:    "Test",
+		PurchaseLedger: "Purchase",
+		TotalAmount:    100,
+		RemoteID:       "r-nodate",
+	}
+
+	_, err := ToXML(def)
+	if err == nil {
+		t.Fatal("expected error for empty VoucherDate")
+	}
+	if !strings.Contains(err.Error(), "VoucherDate is required") {
+		t.Errorf("expected 'VoucherDate is required' error, got: %v", err)
+	}
+}
+
+func TestToXML_MalformedVoucherDate(t *testing.T) {
+	def := &VoucherDef{
+		VoucherType:    "Purchase",
+		VoucherDate:    "2024/03/15",
+		PartyLedger:    "Test",
+		PurchaseLedger: "Purchase",
+		TotalAmount:    100,
+		RemoteID:       "r-baddate",
+	}
+
+	_, err := ToXML(def)
+	if err == nil {
+		t.Fatal("expected error for malformed VoucherDate")
+	}
+	if !strings.Contains(err.Error(), "invalid VoucherDate") {
+		t.Errorf("expected 'invalid VoucherDate' error, got: %v", err)
+	}
+}
+
 func TestToXML_AmountRounding(t *testing.T) {
 	def := &VoucherDef{
 		VoucherType:    "Purchase",
