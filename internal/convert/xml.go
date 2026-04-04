@@ -3,8 +3,10 @@ package convert
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"math"
 	"strings"
+	"time"
 )
 
 // templateData is the data structure passed to the XML template.
@@ -41,10 +43,10 @@ func ToXML(def *VoucherDef) (string, error) {
 	if def.VoucherDate == "" {
 		return "", fmt.Errorf("VoucherDate is required")
 	}
-	tallyDate := strings.ReplaceAll(def.VoucherDate, "-", "")
-	if len(tallyDate) != 8 {
+	if _, err := time.Parse("2006-01-02", def.VoucherDate); err != nil {
 		return "", fmt.Errorf("invalid VoucherDate %q: expected YYYY-MM-DD format", def.VoucherDate)
 	}
+	tallyDate := strings.ReplaceAll(def.VoucherDate, "-", "")
 
 	// Determine voucher mode, defaulting to accounting_invoice
 	voucherMode := def.VoucherMode
@@ -80,33 +82,35 @@ func ToXML(def *VoucherDef) (string, error) {
 	// In journal mode, tax entries are suppressed in the template, so
 	// purchaseAmount must equal TotalAmount to keep debit == credit.
 	taxTotal := 0.0
+	// Copy tax entries to avoid mutating the caller's struct.
+	roundedTaxEntries := make([]TaxEntry, len(def.TaxEntries))
+	copy(roundedTaxEntries, def.TaxEntries)
 	if voucherMode != "journal" {
-		for i := range def.TaxEntries {
-			def.TaxEntries[i].Amount = roundAmount(def.TaxEntries[i].Amount)
-			taxTotal += def.TaxEntries[i].Amount
+		for i := range roundedTaxEntries {
+			roundedTaxEntries[i].Amount = roundAmount(roundedTaxEntries[i].Amount)
+			taxTotal += roundedTaxEntries[i].Amount
 		}
 	}
 	purchaseAmount := roundAmount(totalAmount - taxTotal)
+	// Balance is guaranteed by construction: purchaseAmount absorbs all rounding
+	// residual since it is defined as totalAmount - taxTotal.
 
-	// Verify balance: party(credit) must equal purchase + taxes (debit).
-	debitTotal := purchaseAmount + taxTotal
-	if diff := math.Abs(debitTotal - totalAmount); diff > 0.001 {
-		// Adjust purchase to force balance.
-		purchaseAmount = roundAmount(totalAmount - taxTotal)
-	}
-
-	// Round individual inventory item amounts.
-	for i := range def.InventoryItems {
-		def.InventoryItems[i].Amount = roundAmount(def.InventoryItems[i].Amount)
+	// Copy inventory items to avoid mutating the caller's struct.
+	roundedItems := make([]InventoryItem, len(def.InventoryItems))
+	copy(roundedItems, def.InventoryItems)
+	for i := range roundedItems {
+		roundedItems[i].Amount = roundAmount(roundedItems[i].Amount)
 	}
 
 	// Convert supplier invoice date from YYYY-MM-DD to YYYYMMDD.
 	// Allow empty (optional), but validate format if set.
 	supplierDate := ""
 	if def.SupplierInvoiceDate != "" {
-		supplierDate = strings.ReplaceAll(def.SupplierInvoiceDate, "-", "")
-		if len(supplierDate) != 8 {
-			supplierDate = "" // silently skip invalid supplier date
+		if _, err := time.Parse("2006-01-02", def.SupplierInvoiceDate); err != nil {
+			log.Printf("[convert] WARNING: invalid SupplierInvoiceDate %q, skipping", def.SupplierInvoiceDate)
+			supplierDate = ""
+		} else {
+			supplierDate = strings.ReplaceAll(def.SupplierInvoiceDate, "-", "")
 		}
 	}
 
@@ -121,8 +125,8 @@ func ToXML(def *VoucherDef) (string, error) {
 		PurchaseLedger:      def.PurchaseLedger,
 		TotalAmount:         totalAmount,
 		PurchaseAmount:      purchaseAmount,
-		TaxEntries:          def.TaxEntries,
-		InventoryItems:      def.InventoryItems,
+		TaxEntries:          roundedTaxEntries,
+		InventoryItems:      roundedItems,
 		VoucherMode:         voucherMode,
 		SupplierInvoiceNo:   def.SupplierInvoiceNo,
 		SupplierInvoiceDate: supplierDate,
