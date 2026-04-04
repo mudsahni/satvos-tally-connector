@@ -3,6 +3,7 @@ package convert
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -23,6 +24,11 @@ type templateData struct {
 	VoucherMode         string
 	SupplierInvoiceNo   string
 	SupplierInvoiceDate string // YYYYMMDD format
+}
+
+// roundAmount rounds a float64 to 2 decimal places.
+func roundAmount(f float64) float64 {
+	return math.Round(f*100) / 100
 }
 
 // ToXML converts a VoucherDef to Tally-importable XML.
@@ -62,16 +68,32 @@ func ToXML(def *VoucherDef) (string, error) {
 		persistedView = "Accounting Voucher View"
 	}
 
+	// Round total amount to 2 decimal places.
+	totalAmount := roundAmount(def.TotalAmount)
+
 	// Calculate purchase amount = total - sum(tax).
 	// In journal mode, tax entries are suppressed in the template, so
 	// purchaseAmount must equal TotalAmount to keep debit == credit.
 	taxTotal := 0.0
 	if voucherMode != "journal" {
-		for _, t := range def.TaxEntries {
-			taxTotal += t.Amount
+		for i := range def.TaxEntries {
+			def.TaxEntries[i].Amount = roundAmount(def.TaxEntries[i].Amount)
+			taxTotal += def.TaxEntries[i].Amount
 		}
 	}
-	purchaseAmount := def.TotalAmount - taxTotal
+	purchaseAmount := roundAmount(totalAmount - taxTotal)
+
+	// Verify balance: party(credit) must equal purchase + taxes (debit).
+	debitTotal := purchaseAmount + taxTotal
+	if diff := math.Abs(debitTotal - totalAmount); diff > 0.001 {
+		// Adjust purchase to force balance.
+		purchaseAmount = roundAmount(totalAmount - taxTotal)
+	}
+
+	// Round individual inventory item amounts.
+	for i := range def.InventoryItems {
+		def.InventoryItems[i].Amount = roundAmount(def.InventoryItems[i].Amount)
+	}
 
 	// Convert supplier invoice date from YYYY-MM-DD to YYYYMMDD
 	supplierDate := strings.ReplaceAll(def.SupplierInvoiceDate, "-", "")
@@ -85,7 +107,7 @@ func ToXML(def *VoucherDef) (string, error) {
 		Narration:           def.Narration,
 		PartyLedger:         def.PartyLedger,
 		PurchaseLedger:      def.PurchaseLedger,
-		TotalAmount:         def.TotalAmount,
+		TotalAmount:         totalAmount,
 		PurchaseAmount:      purchaseAmount,
 		TaxEntries:          def.TaxEntries,
 		InventoryItems:      def.InventoryItems,

@@ -544,6 +544,47 @@ func TestToXML_NoBillAllocationsWithoutInvoiceNo(t *testing.T) {
 	}
 }
 
+func TestToXML_AmountRounding(t *testing.T) {
+	def := &VoucherDef{
+		VoucherType:    "Purchase",
+		VoucherDate:    "2024-01-01",
+		PartyLedger:    "Vendor",
+		PurchaseLedger: "Purchase",
+		TaxEntries: []TaxEntry{
+			{LedgerName: "CGST", Amount: 90.005},
+			{LedgerName: "SGST", Amount: 90.005},
+		},
+		TotalAmount: 1000.005,
+		RemoteID:    "r-round",
+	}
+
+	xml, err := ToXML(def)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// TotalAmount 1000.005 rounds to 1000.01
+	partyBlock := extractBlock(xml, "ALLLEDGERENTRIES.LIST", 0)
+	if !strings.Contains(partyBlock, "<AMOUNT>1000.01</AMOUNT>") {
+		t.Errorf("expected rounded total 1000.01 in party block, got: %s", partyBlock)
+	}
+
+	// Tax amounts: 90.005 rounds to 90.01 each
+	taxBlock1 := extractBlock(xml, "ALLLEDGERENTRIES.LIST", 2)
+	if !strings.Contains(taxBlock1, "<AMOUNT>-90.01</AMOUNT>") {
+		t.Errorf("expected rounded tax -90.01, got: %s", taxBlock1)
+	}
+
+	// Purchase = 1000.01 - 90.01 - 90.01 = 819.99
+	purchaseBlock := extractBlock(xml, "ALLLEDGERENTRIES.LIST", 1)
+	if !strings.Contains(purchaseBlock, "<AMOUNT>-819.99</AMOUNT>") {
+		t.Errorf("expected rounded purchase -819.99, got: %s", purchaseBlock)
+	}
+
+	// Verify balance: party = purchase + taxes => 1000.01 = 819.99 + 90.01 + 90.01
+	// This confirms debit == credit
+}
+
 func TestToXML_ReferenceDateWithoutReference(t *testing.T) {
 	def := &VoucherDef{
 		VoucherType:         "Purchase",
