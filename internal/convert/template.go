@@ -21,9 +21,9 @@ const voucherXMLTemplate = `<VOUCHER REMOTEID="{{.RemoteID | xmlEscape}}" VCHTYP
 <VOUCHERNUMBER></VOUCHERNUMBER>
 {{- if .SupplierInvoiceNo}}
 <REFERENCE>{{.SupplierInvoiceNo | xmlEscape}}</REFERENCE>
-{{- end}}
 {{- if .SupplierInvoiceDate}}
 <REFERENCEDATE>{{.SupplierInvoiceDate}}</REFERENCEDATE>
+{{- end}}
 {{- end}}
 <ISINVOICE>{{.IsInvoice}}</ISINVOICE>
 <PERSISTEDVIEW>{{.PersistedView}}</PERSISTEDVIEW>

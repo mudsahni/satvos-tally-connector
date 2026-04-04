@@ -544,6 +544,31 @@ func TestToXML_NoBillAllocationsWithoutInvoiceNo(t *testing.T) {
 	}
 }
 
+func TestToXML_ReferenceDateWithoutReference(t *testing.T) {
+	def := &VoucherDef{
+		VoucherType:         "Purchase",
+		VoucherDate:         "2024-05-01",
+		PartyLedger:         "Test",
+		PurchaseLedger:      "Purchase",
+		TotalAmount:         100,
+		RemoteID:            "r-refdate-only",
+		SupplierInvoiceNo:   "",
+		SupplierInvoiceDate: "2024-04-28",
+	}
+
+	xml, err := ToXML(def)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Contains(xml, "<REFERENCE>") {
+		t.Error("expected no REFERENCE tag when SupplierInvoiceNo is empty")
+	}
+	if strings.Contains(xml, "<REFERENCEDATE>") {
+		t.Error("expected no REFERENCEDATE tag when SupplierInvoiceNo is empty, even if SupplierInvoiceDate is set")
+	}
+}
+
 // extractBlock extracts the nth occurrence of a block delimited by <tag> and </tag>.
 func extractBlock(xml, tag string, n int) string {
 	openTag := "<" + tag + ">"
